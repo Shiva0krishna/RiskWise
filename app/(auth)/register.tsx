@@ -64,26 +64,36 @@ export default function RegisterScreen() {
     setLoading(true);
     setErrors({});
     
-    const { error } = await signUp(email, password, fullName);
+    try {
+      const { error } = await signUp(email, password, fullName);
 
-    if (error) {
-      if (Platform.OS === 'web') {
-        setErrors({ email: error.message });
+      if (error) {
+        if (Platform.OS === 'web') {
+          setErrors({ email: error.message });
+        } else {
+          Alert.alert('Registration Failed', error.message);
+        }
       } else {
-        Alert.alert('Registration Failed', error.message);
+        if (Platform.OS === 'web') {
+          router.push('/(auth)/login');
+        } else {
+          Alert.alert(
+            'Registration Successful',
+            'Welcome! You can now start using the app.',
+            [{ text: 'OK' }]
+          );
+        }
       }
-    } else {
+    } catch (err) {
+      console.error('Registration error:', err);
       if (Platform.OS === 'web') {
-        router.push('/(auth)/login');
+        setErrors({ email: 'An unexpected error occurred' });
       } else {
-        Alert.alert(
-          'Registration Successful',
-          'Welcome! You can now start using the app.',
-          [{ text: 'OK' }]
-        );
+        Alert.alert('Registration Failed', 'An unexpected error occurred');
       }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (

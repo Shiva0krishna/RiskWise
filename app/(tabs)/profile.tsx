@@ -8,7 +8,11 @@ export default function ProfileScreen() {
   const { user, signOut } = useAuth();
 
   const handleSignOut = async () => {
-    await signOut();
+    try {
+      await signOut();
+    } catch (err) {
+      console.error('Sign out error:', err);
+    }
   };
 
   return (

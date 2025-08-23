@@ -63,8 +63,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
         },
       });
 
-      // Profile creation is handled by database trigger
-
       return { error };
     } catch (err) {
       console.error('Sign up error:', err);

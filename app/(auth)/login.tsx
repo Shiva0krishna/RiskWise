@@ -47,16 +47,26 @@ export default function LoginScreen() {
     setLoading(true);
     setErrors({});
     
-    const { error } = await signIn(email, password);
+    try {
+      const { error } = await signIn(email, password);
 
-    if (error) {
-      if (Platform.OS === 'web') {
-        setErrors({ password: error.message });
-      } else {
-        Alert.alert('Login Failed', error.message);
+      if (error) {
+        if (Platform.OS === 'web') {
+          setErrors({ password: error.message });
+        } else {
+          Alert.alert('Login Failed', error.message);
+        }
       }
+    } catch (err) {
+      console.error('Login error:', err);
+      if (Platform.OS === 'web') {
+        setErrors({ password: 'An unexpected error occurred' });
+      } else {
+        Alert.alert('Login Failed', 'An unexpected error occurred');
+      }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (

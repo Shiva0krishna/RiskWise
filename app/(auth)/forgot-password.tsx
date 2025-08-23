@@ -41,26 +41,36 @@ export default function ForgotPasswordScreen() {
     setLoading(true);
     setErrors({});
     
-    const { error } = await resetPassword(email);
+    try {
+      const { error } = await resetPassword(email);
 
-    if (error) {
-      if (Platform.OS === 'web') {
-        setErrors({ email: error.message });
+      if (error) {
+        if (Platform.OS === 'web') {
+          setErrors({ email: error.message });
+        } else {
+          Alert.alert('Reset Failed', error.message);
+        }
       } else {
-        Alert.alert('Reset Failed', error.message);
+        if (Platform.OS === 'web') {
+          router.back();
+        } else {
+          Alert.alert(
+            'Reset Email Sent',
+            'Check your email for password reset instructions.',
+            [{ text: 'OK', onPress: () => router.back() }]
+          );
+        }
       }
-    } else {
+    } catch (err) {
+      console.error('Reset password error:', err);
       if (Platform.OS === 'web') {
-        router.back();
+        setErrors({ email: 'An unexpected error occurred' });
       } else {
-        Alert.alert(
-          'Reset Email Sent',
-          'Check your email for password reset instructions.',
-          [{ text: 'OK', onPress: () => router.back() }]
-        );
+        Alert.alert('Reset Failed', 'An unexpected error occurred');
       }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
