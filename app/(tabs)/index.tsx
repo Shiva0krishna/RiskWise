@@ -237,7 +237,7 @@ export default function DashboardScreen() {
               <Shield color="#9CA3AF" size={48} />
               <Text style={styles.emptyStateText}>No predictions yet</Text>
               <Text style={styles.emptyStateSubtext}>
-                Upload a CSV file or create a prediction to get started
+                Use the Predict tab to create your first risk assessment
               </Text>
             </View>
           )}
