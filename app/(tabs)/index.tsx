@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BarChart3, FileText, Shield, TrendingUp, AlertTriangle, CheckCircle } from 'lucide-react-native';
+import { ChartBar as BarChart3, FileText, Shield, TrendingUp, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 

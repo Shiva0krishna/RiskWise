@@ -8,7 +8,7 @@ import {
   Alert,
   Platform,
 } from 'react-native';
-import { Upload, FileText, CheckCircle, AlertCircle } from 'lucide-react-native';
+import { Upload, FileText, CircleCheck as CheckCircle, CircleAlert as AlertCircle } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { ApiService } from '@/lib/api';
 import { supabase } from '@/lib/supabase';

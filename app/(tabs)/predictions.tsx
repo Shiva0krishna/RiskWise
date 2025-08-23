@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from 'react-native';
-import { BarChart3, FileText, Calendar, AlertTriangle, TrendingUp, CheckCircle } from 'lucide-react-native';
+import { ChartBar as BarChart3, FileText, Calendar, TriangleAlert as AlertTriangle, TrendingUp, CircleCheck as CheckCircle } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 
