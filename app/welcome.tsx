@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { Shield, BarChart3, FileText, Users } from 'lucide-react-native';
+import { Shield, ChartBar as BarChart3, FileText, Users } from 'lucide-react-native';
 import { Button } from '@/components/ui/Button';
 
 const { width } = Dimensions.get('window');
