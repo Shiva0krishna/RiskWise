@@ -11,5 +11,5 @@ export default function IndexScreen() {
   }
 
   // Redirect based on authentication status
-  return user ? <Redirect href="/(tabs)" /> : <Redirect href="/welcome" />;
+  return user ? <Redirect href="/(tabs)" /> : <Redirect href="/(auth)/login" />;
 }

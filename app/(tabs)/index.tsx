@@ -80,14 +80,14 @@ export default function DashboardScreen() {
   const quickActions = [
     {
       icon: FileText,
-      title: 'Upload CSV',
-      description: 'Batch risk prediction',
+      title: 'New Prediction',
+      description: 'Create risk assessment',
       color: '#3B82F6',
-      route: '/(tabs)/upload',
+      route: '/(tabs)/predict',
     },
     {
       icon: BarChart3,
-      title: 'View Predictions',
+      title: 'View History',
       description: 'Analysis history',
       color: '#10B981',
       route: '/(tabs)/predictions',
@@ -169,7 +169,17 @@ export default function DashboardScreen() {
           <Text style={styles.sectionTitle}>Quick Actions</Text>
           <View style={styles.actionsContainer}>
             {quickActions.map((action, index) => (
-              <TouchableOpacity key={index} style={styles.actionCard}>
+              <TouchableOpacity 
+                key={index} 
+                style={styles.actionCard}
+                onPress={() => {
+                  if (action.route === '/(tabs)/upload') {
+                    // Navigate to upload tab
+                  } else if (action.route === '/(tabs)/predictions') {
+                    // Navigate to predictions tab
+                  }
+                }}
+              >
                 <View style={[styles.actionIcon, { backgroundColor: `${action.color}15` }]}>
                   <action.icon color={action.color} size={28} />
                 </View>

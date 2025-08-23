@@ -275,7 +275,7 @@ export default function PredictionsScreen() {
             <BarChart3 color="#9CA3AF" size={64} />
             <Text style={styles.emptyStateTitle}>No Predictions Yet</Text>
             <Text style={styles.emptyStateText}>
-              Upload a CSV file or create a prediction to see your results here
+              Use the Predict tab to create your first risk assessment
             </Text>
           </View>
         )}
