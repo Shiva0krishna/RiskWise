@@ -1,6 +1,5 @@
 /*
   # Complete RiskWise Database Schema
-
   1. New Tables
     - `profiles` - User profile information
     - `predictions` - Store prediction results
