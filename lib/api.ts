@@ -1,8 +1,4 @@
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
-
-if (!API_BASE_URL) {
-  console.warn('Missing API_BASE_URL environment variable');
-}
+const API_BASE_URL = 'http://localhost:8000';
 
 export interface PredictionResult {
   Predicted_Risk: string;
@@ -13,7 +9,7 @@ export interface PredictionResult {
 }
 
 export class ApiService {
-  private static baseUrl = API_BASE_URL || '';
+  private static baseUrl = API_BASE_URL;
 
   static async predictFromText(interactiveText: string): Promise<PredictionResult[]> {
     try {

@@ -3,12 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import 'react-native-url-polyfill/auto';
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('Missing Supabase environment variables. Please add them to your .env file.');
-}
+const supabaseUrl = 'https://oefzpuklqyrkpygcnrsu.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9lZnpwdWtscXlya3B5Z2NucnN1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU1MjExNDYsImV4cCI6MjA3MTA5NzE0Nn0.5yGRoDTbMNuwGa9uxFi2Ew0UgjF_wOIV1eZDA7CX_YQ';
 
 // Use AsyncStorage for React Native, localStorage for web
 const storage = {
@@ -34,7 +30,7 @@ const storage = {
   },
 };
 
-export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage,
     autoRefreshToken: true,
