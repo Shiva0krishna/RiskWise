@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
-import { Chrome as Home, ChartBar as BarChart3, FileText, User, Settings } from 'lucide-react-native';
+import { Chrome as Home, ChartBar as BarChart3, FileText, User, Settings, Target } from 'lucide-react-native';
 
 export default function TabLayout() {
   return (
@@ -31,9 +31,16 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="predict"
+        options={{
+          title: 'Predict',
+          tabBarIcon: ({ color, size }) => <Target color={color} size={size} />,
+        }}
+      />
+      <Tabs.Screen
         name="predictions"
         options={{
-          title: 'Predictions',
+          title: 'History',
           tabBarIcon: ({ color, size }) => <BarChart3 color={color} size={size} />,
         }}
       />
