@@ -148,23 +148,42 @@ export default function UploadScreen() {
   };
 
   const downloadCSV = async (rows: any[], fileName: string) => {
-    if (!rows || rows.length === 0) return;
-    const headers = Object.keys(rows[0]);
-    const csv = [
-      headers.join(','),
-      ...rows.map(r => headers.map(h => r[h]).join(',')),
-    ].join('\n');
+  if (!rows || rows.length === 0) return;
 
-    const fileUri =
-      FileSystem.documentDirectory +
-      fileName.replace('.csv', '_results.csv');
+  const headers = Object.keys(rows[0]);
+  const csv = [
+    headers.join(','),
+    ...rows.map(r => headers.map(h => r[h]).join(',')),
+  ].join('\n');
+
+  const finalFileName = fileName.replace('.csv', '_results.csv');
+
+  if (Platform.OS === 'web') {
+    // ✅ Web: create Blob and trigger download
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = finalFileName;
+    document.body.appendChild(a);
+    a.click();
+
+    // cleanup
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  } else {
+    // ✅ Native: use expo-file-system + sharing
+    const fileUri = FileSystem.documentDirectory + finalFileName;
 
     await FileSystem.writeAsStringAsync(fileUri, csv, {
       encoding: FileSystem.EncodingType.UTF8,
     });
 
     await Sharing.shareAsync(fileUri);
-  };
+  }
+};
+
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
@@ -175,6 +194,18 @@ export default function UploadScreen() {
         <Text style={styles.description}>
           Select a CSV file with building data to analyze potential risk.
         </Text>
+
+        <View style={styles.formatInfo}>
+    <Text style={styles.formatTitle}>Expected CSV Format:</Text>
+    <Text style={styles.formatText}>
+      Building_ID, City, Comparable_Project, Floors, Height_m, Total_Area_m2, 
+      Material, Structural_System, Structural_Risk_Index, Facade_Complexity_Index, 
+      Project_Duration_days, Delay_Index, Cost_Overrun_%, Safety_Incident_Count, 
+      Resource_Allocation_Efficiency, Max_Vibration_mm_s, Avg_Tilt_deg, 
+      Avg_Temperature_C, Humidity_%, Equipment_Usage_Rate_%, Crane_Alerts_Count, 
+      COBie_Assets, COBie_Systems
+    </Text>
+  </View>
 
         <Button
           title={uploading ? 'Processing...' : 'Choose File'}
