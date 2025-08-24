@@ -86,11 +86,13 @@ export default function PredictionsScreen() {
 
   const calculateRiskSummary = (results: any[]) => {
     const summary = { High: 0, Medium: 0, Low: 0 };
-    results.forEach(result => {
-      if (result.Predicted_Risk in summary) {
-        summary[result.Predicted_Risk as keyof typeof summary]++;
-      }
-    });
+    if (Array.isArray(results)) {
+      results.forEach(result => {
+        if (result.Predicted_Risk in summary) {
+          summary[result.Predicted_Risk as keyof typeof summary]++;
+        }
+      });
+    }
     return summary;
   };
 

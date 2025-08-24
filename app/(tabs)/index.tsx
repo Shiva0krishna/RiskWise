@@ -44,11 +44,13 @@ export default function DashboardScreen() {
 
       predictions?.forEach((prediction) => {
         const results = prediction.results;
-        if (Array.isArray(results)) {
+        if (results && Array.isArray(results)) {
           results.forEach((result) => {
-            if (result.Predicted_Risk === 'High') highRiskCount++;
-            else if (result.Predicted_Risk === 'Medium') mediumRiskCount++;
-            else if (result.Predicted_Risk === 'Low') lowRiskCount++;
+            if (result && result.Predicted_Risk) {
+              if (result.Predicted_Risk === 'High') highRiskCount++;
+              else if (result.Predicted_Risk === 'Medium') mediumRiskCount++;
+              else if (result.Predicted_Risk === 'Low') lowRiskCount++;
+            }
           });
         }
       });

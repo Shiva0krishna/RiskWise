@@ -77,6 +77,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
         password,
       });
 
+      if (!error) {
+        // Force navigation to tabs after successful login
+        setTimeout(() => {
+          router.replace('/(tabs)/');
+        }, 100);
+      }
+
       return { error };
     } catch (err) {
       console.error('Sign in error:', err);

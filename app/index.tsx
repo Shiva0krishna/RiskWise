@@ -9,7 +9,7 @@ export default function IndexScreen() {
   React.useEffect(() => {
     if (!loading) {
       if (user) {
-        router.replace('/(tabs)');
+        router.replace('/(tabs)/');
       } else {
         router.replace('/welcome');
       }
