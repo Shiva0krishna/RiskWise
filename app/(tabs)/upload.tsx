@@ -118,18 +118,6 @@ const CsvUploadScreen = ({ user }: { user: any }) => {
 
       {uploadResults.map((result, idx) => (
         <View key={idx} style={styles.resultCard}>
-          <View style={styles.formatInfo}>
-            <Text style={styles.formatTitle}>Expected CSV Format:</Text>
-            <Text style={styles.formatText}>
-              Building_ID, City, Comparable_Project, Floors, Height_m, Total_Area_m2, 
-              Material, Structural_System, Structural_Risk_Index, Facade_Complexity_Index, 
-              Project_Duration_days, Delay_Index, Cost_Overrun_%, Safety_Incident_Count, 
-              Resource_Allocation_Efficiency, Max_Vibration_mm_s, Avg_Tilt_deg, 
-              Avg_Temperature_C, Humidity_%, Equipment_Usage_Rate_%, Crane_Alerts_Count, 
-              COBie_Assets, COBie_Systems
-            </Text>
-          </View>
-        </View>
           <Text style={styles.resultTitle}>{result.fileName}</Text>
           {renderTable(result.results)}
           {result.results.length > 0 && (
