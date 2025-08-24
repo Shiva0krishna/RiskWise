@@ -91,16 +91,7 @@ export default function PredictScreen() {
           <BuildingDataForm onPredictionComplete={handlePredictionComplete} />
         )}
 
-        {activeTab === 'csv' && (
-          <View style={styles.comingSoon}>
-            <FileText color="#9CA3AF" size={64} />
-            <Text style={styles.comingSoonTitle}>CSV Upload</Text>
-            <Text style={styles.comingSoonText}>
-              CSV file upload functionality will be available soon.
-              Use the form input for now.
-            </Text>
-          </View>
-        )}
+        ?
 
         {activeTab === 'text' && (
           <View style={styles.comingSoon}>
