@@ -45,17 +45,14 @@ export default function UploadScreen() {
       setUploading(true);
 
       try {
-        // Create a File object for the API
         const fileBlob = await fetch(file.uri).then(r => r.blob());
         const fileObject = new File([fileBlob], file.name, { type: 'text/csv' });
 
-        // Call the prediction API
         const apiResponse = await ApiService.predictFromCsv(fileObject);
         const predictions = Array.isArray(apiResponse?.predictions)
           ? apiResponse.predictions
           : [];
 
-        // Save to database
         if (user) {
           const { error } = await supabase.from('predictions').insert({
             user_id: user.id,
@@ -73,33 +70,26 @@ export default function UploadScreen() {
           results: predictions,
           status: 'success',
         };
-
         setUploadResults(prev => [uploadResult, ...prev]);
 
         if (Platform.OS !== 'web') {
           Alert.alert(
-            'Upload Successful',
-            `Processed ${predictions.length} predictions from ${file.name}`,
-            [{ text: 'OK' }]
+            '✅ Upload Successful',
+            `Processed ${predictions.length} predictions from ${file.name}`
           );
         }
       } catch (error) {
         console.error('Upload error:', error);
-
         const uploadResult: UploadResult = {
           fileName: file.name,
           results: [],
           status: 'error',
           error: error instanceof Error ? error.message : 'Upload failed',
         };
-
         setUploadResults(prev => [uploadResult, ...prev]);
 
         if (Platform.OS !== 'web') {
-          Alert.alert(
-            'Upload Failed',
-            'Please try again or check your file format.'
-          );
+          Alert.alert('❌ Upload Failed', 'Please check your file and try again.');
         }
       }
     } catch (error) {
@@ -122,38 +112,8 @@ export default function UploadScreen() {
     }
   };
 
-  /** -----------------------------
-   * ✅ Table renderer
-   * ------------------------------ */
   const renderTable = (rows: any[]) => {
-    if (!rows || rows.length === 0) {
-      // render just headers for empty state
-      const headers = [
-        'Predicted_Risk',
-        'proba_High',
-        'proba_Low',
-        'proba_Medium',
-      ];
-      return (
-        <View style={styles.table}>
-          <View style={[styles.tableRow, styles.tableHeader]}>
-            {headers.map((h, i) => (
-              <Text key={i} style={[styles.tableCell, styles.tableHeaderCell]}>
-                {h}
-              </Text>
-            ))}
-          </View>
-          <View style={styles.tableRow}>
-            {headers.map((h, i) => (
-              <Text key={i} style={styles.tableCell}>
-                -
-              </Text>
-            ))}
-          </View>
-        </View>
-      );
-    }
-
+    if (!rows || rows.length === 0) return null;
     const headers = Object.keys(rows[0]);
 
     return (
@@ -166,9 +126,16 @@ export default function UploadScreen() {
             </Text>
           ))}
         </View>
+
         {/* Body */}
         {rows.map((row, rIdx) => (
-          <View key={rIdx} style={styles.tableRow}>
+          <View
+            key={rIdx}
+            style={[
+              styles.tableRow,
+              rIdx % 2 === 0 && { backgroundColor: '#F9FAFB' }, // striped rows
+            ]}
+          >
             {headers.map((h, cIdx) => (
               <Text key={cIdx} style={styles.tableCell}>
                 {String(row[h])}
@@ -180,12 +147,8 @@ export default function UploadScreen() {
     );
   };
 
-  /** -----------------------------
-   * ✅ CSV Download
-   * ------------------------------ */
   const downloadCSV = async (rows: any[], fileName: string) => {
     if (!rows || rows.length === 0) return;
-
     const headers = Object.keys(rows[0]);
     const csv = [
       headers.join(','),
@@ -204,111 +167,200 @@ export default function UploadScreen() {
   };
 
   return (
-    <ScrollView style={styles.container}>
-      {/* header & upload section remain same */}
+    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
+      {/* Upload Section */}
+      <View style={styles.card}>
+        <Upload color="#3B82F6" size={48} />
+        <Text style={styles.title}>Upload CSV File</Text>
+        <Text style={styles.description}>
+          Select a CSV file with building data to analyze potential risk.
+        </Text>
 
-      <View style={styles.content}>
-        {/* Upload Section */}
-        <View style={styles.uploadSection}>
-          <View style={styles.uploadCard}>
-            <Upload color="#3B82F6" size={48} />
-            <Text style={styles.uploadTitle}>Select CSV File</Text>
-            <Text style={styles.uploadDescription}>
-              Choose a CSV file containing building data for risk analysis
-            </Text>
-
-            <Button
-              title={uploading ? 'Processing...' : 'Choose File'}
-              onPress={handleFileUpload}
-              loading={uploading}
-              style={styles.uploadButton}
-            />
-          </View>
-        </View>
-
-        {/* Results Section */}
-        {uploadResults.length > 0 && (
-          <View style={styles.resultsSection}>
-            <Text style={styles.sectionTitle}>Upload Results</Text>
-
-            {uploadResults.map((result, index) => (
-              <View key={index} style={styles.resultCard}>
-                <View style={styles.resultHeader}>
-                  <View style={styles.resultIcon}>
-                    {result.status === 'success' ? (
-                      <CheckCircle color="#10B981" size={24} />
-                    ) : (
-                      <AlertCircle color="#EF4444" size={24} />
-                    )}
-                  </View>
-                  <View style={styles.resultInfo}>
-                    <Text style={styles.resultFileName}>{result.fileName}</Text>
-                    <Text style={styles.resultStatus}>
-                      {result.status === 'success'
-                        ? `${result.results.length} predictions generated`
-                        : result.error || 'Upload failed'}
-                    </Text>
-                  </View>
-                </View>
-
-                {result.status === 'success' && (
-                  <>
-                    {/* ✅ Risk Summary */}
-                    <View style={styles.resultSummary}>
-                      <Text style={styles.summaryTitle}>Risk Summary:</Text>
-                      <View style={styles.riskCounts}>
-                        {['High', 'Medium', 'Low'].map(risk => {
-                          const count = result.results.filter(
-                            r => r.Predicted_Risk === risk
-                          ).length;
-                          return (
-                            <View key={risk} style={styles.riskCount}>
-                              <View
-                                style={[
-                                  styles.riskDot,
-                                  { backgroundColor: getRiskColor(risk) },
-                                ]}
-                              />
-                              <Text style={styles.riskCountText}>
-                                {risk}: {count}
-                              </Text>
-                            </View>
-                          );
-                        })}
-                      </View>
-                    </View>
-
-                    {/* ✅ Table view */}
-                    <Text style={[styles.summaryTitle, { marginTop: 12 }]}>
-                      Prediction Results (Table):
-                    </Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator>
-                      {renderTable(result.results)}
-                    </ScrollView>
-
-                    {/* ✅ Download CSV */}
-                    {result.results.length > 0 && (
-                      <Button
-                        title="Download Results CSV"
-                        onPress={() =>
-                          downloadCSV(result.results, result.fileName)
-                        }
-                        style={{ marginTop: 12 }}
-                      />
-                    )}
-                  </>
-                )}
-              </View>
-            ))}
-          </View>
-        )}
+        <Button
+          title={uploading ? 'Processing...' : 'Choose File'}
+          onPress={handleFileUpload}
+          loading={uploading}
+          style={styles.uploadButton}
+        />
       </View>
+
+      {/* Results Section */}
+      {uploadResults.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>📊 Upload Results</Text>
+
+          {uploadResults.map((result, index) => (
+            <View key={index} style={styles.resultCard}>
+              <View style={styles.resultHeader}>
+                {result.status === 'success' ? (
+                  <CheckCircle color="#10B981" size={22} />
+                ) : (
+                  <AlertCircle color="#EF4444" size={22} />
+                )}
+                <View style={{ marginLeft: 8 }}>
+                  <Text style={styles.resultFileName}>{result.fileName}</Text>
+                  <Text style={styles.resultStatus}>
+                    {result.status === 'success'
+                      ? `${result.results.length} predictions`
+                      : result.error || 'Upload failed'}
+                  </Text>
+                </View>
+              </View>
+
+              {result.status === 'success' && (
+                <>
+                  {/* Risk Summary */}
+                  <View style={styles.summaryBox}>
+                    <Text style={styles.summaryTitle}>Risk Summary</Text>
+                    <View style={styles.riskCounts}>
+                      {['High', 'Medium', 'Low'].map(risk => {
+                        const count = result.results.filter(
+                          r => r.Predicted_Risk === risk
+                        ).length;
+                        return (
+                          <View key={risk} style={styles.riskBadge}>
+                            <View
+                              style={[
+                                styles.riskDot,
+                                { backgroundColor: getRiskColor(risk) },
+                              ]}
+                            />
+                            <Text style={styles.riskText}>
+                              {risk}: {count}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  {/* Prediction Table */}
+                  <Text style={styles.tableTitle}>Detailed Predictions</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    {renderTable(result.results)}
+                  </ScrollView>
+
+                  {/* Download */}
+                  <Button
+                    title="⬇️ Download Results"
+                    onPress={() => downloadCSV(result.results, result.fileName)}
+                    style={{ marginTop: 12 }}
+                  />
+                </>
+              )}
+            </View>
+          ))}
+        </View>
+      )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  /* keep your existing styles, table styles unchanged */
+  container: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+    padding: 16,
+  },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
+    marginBottom: 20,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginTop: 12,
+    color: '#111827',
+  },
+  description: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginVertical: 8,
+    textAlign: 'center',
+  },
+  uploadButton: {
+    marginTop: 16,
+    alignSelf: 'stretch',
+  },
+  section: {
+    marginTop: 8,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 12,
+  },
+  resultCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  resultHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  resultFileName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  resultStatus: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  summaryBox: {
+    marginBottom: 12,
+  },
+  summaryTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 6,
+    color: '#111827',
+  },
+  riskCounts: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  riskBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 20,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+  },
+  riskDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  riskText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#374151',
+  },
+  tableTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 6,
+    color: '#111827',
+  },
   table: {
     borderWidth: 1,
     borderColor: '#E5E7EB',
