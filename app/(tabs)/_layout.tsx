@@ -38,13 +38,6 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="predict"
-        options={{
-          title: 'Predict',
-          tabBarIcon: ({ color, size }) => <Target color={color} size={size} />,
-        }}
-      />
-      <Tabs.Screen
         name="predictions"
         options={{
           title: 'History',
