@@ -6,17 +6,11 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
+  Button,
+  Alert,
 } from 'react-native';
-import {
-  FileText,
-  Database,
-  MessageSquare,
-  TriangleAlert as AlertTriangle,
-  TrendingUp,
-  CircleCheck as CheckCircle,
-} from 'lucide-react-native';
+import { FileText, Database, MessageSquare, TriangleAlert as AlertTriangle, TrendingUp, CircleCheck as CheckCircle } from 'lucide-react-native';
 import { BuildingDataForm } from '@/components/forms/BuildingDataForm';
-import { ApiService } from '@/lib/api'; // ✅ Make sure ApiService has predictFromText()
 
 interface PredictionResult {
   Predicted_Risk: string;
@@ -27,14 +21,14 @@ interface PredictionResult {
 }
 
 export default function PredictScreen() {
-  const [activeTab, setActiveTab] = useState<'form' | 'text'>('form'); // removed csv
+  const [activeTab, setActiveTab] = useState<'form' | 'text'>('form');
   const [predictionResults, setPredictionResults] = useState<PredictionResult[]>([]);
-  const [textInput, setTextInput] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [inputText, setInputText] = useState('');
 
   const tabs = [
     { id: 'form', title: 'Form Input', icon: Database },
-    // { id: 'csv', title: 'CSV Upload', icon: FileText }, // ❌ removed CSV
+    // CSV is disabled for now
+    // { id: 'csv', title: 'CSV Upload', icon: FileText },
     { id: 'text', title: 'Text Input', icon: MessageSquare },
   ];
 
@@ -60,18 +54,32 @@ export default function PredictScreen() {
     setPredictionResults(results);
   };
 
-  // ✅ NEW: handle text prediction
+  // 📌 Call backend for text prediction
   const handleTextPrediction = async () => {
-    if (!textInput.trim()) return;
-
+    if (!inputText.trim()) {
+      Alert.alert("Input Required", "Please enter some text for prediction.");
+      return;
+    }
     try {
-      setLoading(true);
-      const predictions = await ApiService.predictFromText(textInput); // <-- your backend API
-      setPredictionResults(predictions);
+      const response = await fetch("http://127.0.0.1:8000/predict/text", {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain",
+        },
+        body: inputText,
+      });
+
+      if (!response.ok) throw new Error("Failed to fetch predictions");
+      const data = await response.json();
+
+      if (data && data.predictions) {
+        setPredictionResults([data.predictions]);
+      } else {
+        throw new Error("Invalid response format");
+      }
     } catch (error) {
-      console.error('Text prediction error:', error);
-    } finally {
-      setLoading(false);
+      console.error(error);
+      Alert.alert("Error", "Failed to fetch prediction from API");
     }
   };
 
@@ -119,23 +127,14 @@ export default function PredictScreen() {
 
         {activeTab === 'text' && (
           <View style={styles.textInputContainer}>
-            <Text style={styles.inputLabel}>Enter Building Data (Text):</Text>
             <TextInput
               style={styles.textInput}
-              placeholder="Paste building details here..."
-              value={textInput}
-              onChangeText={setTextInput}
+              placeholder="Enter building/project details..."
+              value={inputText}
+              onChangeText={setInputText}
               multiline
             />
-            <TouchableOpacity
-              style={styles.predictButton}
-              onPress={handleTextPrediction}
-              disabled={loading}
-            >
-              <Text style={styles.predictButtonText}>
-                {loading ? 'Predicting...' : 'Predict Risk'}
-              </Text>
-            </TouchableOpacity>
+            <Button title="Predict Risk" onPress={handleTextPrediction} />
           </View>
         )}
       </View>
@@ -150,16 +149,11 @@ export default function PredictScreen() {
               return (
                 <View key={index} style={styles.resultCard}>
                   <View style={styles.resultHeader}>
-                    <View
-                      style={[
-                        styles.resultIcon,
-                        { backgroundColor: `${getRiskColor(result.Predicted_Risk)}15` },
-                      ]}
-                    >
-                      <RiskIcon
-                        color={getRiskColor(result.Predicted_Risk)}
-                        size={24}
-                      />
+                    <View style={[
+                      styles.resultIcon,
+                      { backgroundColor: `${getRiskColor(result.Predicted_Risk)}15` }
+                    ]}>
+                      <RiskIcon color={getRiskColor(result.Predicted_Risk)} size={24} />
                     </View>
                     <View style={styles.resultInfo}>
                       <Text style={styles.resultRisk}>
@@ -170,12 +164,11 @@ export default function PredictScreen() {
                       </Text>
                     </View>
                   </View>
-
+                  
                   <View style={styles.probabilitySection}>
                     <Text style={styles.probabilityTitle}>Risk Probabilities:</Text>
-                    {['High', 'Medium', 'Low'].map((level) => {
-                      const prob =
-                        result[`proba_${level}` as keyof PredictionResult] as number;
+                    {['High', 'Medium', 'Low'].map(level => {
+                      const prob = result[`proba_${level}` as keyof PredictionResult] as number;
                       const percentage = Math.round(prob * 100);
                       return (
                         <View key={level} style={styles.probabilityItem}>
@@ -226,38 +219,19 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   tab: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    gap: 8,
+    flex: 1, flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'center', paddingVertical: 12, paddingHorizontal: 16,
+    borderRadius: 8, gap: 8,
   },
   activeTab: { backgroundColor: '#EBF8FF' },
   tabText: { fontSize: 14, fontWeight: '500', color: '#6B7280' },
   activeTabText: { color: '#3B82F6', fontWeight: '600' },
-  content: { flex: 1 },
-  textInputContainer: { padding: 20 },
-  inputLabel: { fontSize: 14, fontWeight: '600', marginBottom: 8, color: '#374151' },
+  content: { flex: 1, paddingHorizontal: 24 },
+  textInputContainer: { marginBottom: 20 },
   textInput: {
-    height: 120,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    textAlignVertical: 'top',
-    marginBottom: 12,
+    height: 120, borderColor: '#D1D5DB', borderWidth: 1, borderRadius: 8,
+    padding: 12, marginBottom: 12, backgroundColor: '#FFFFFF', textAlignVertical: 'top',
   },
-  predictButton: {
-    backgroundColor: '#3B82F6',
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  predictButtonText: { color: '#FFF', fontWeight: '600', fontSize: 16 },
   resultsContainer: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
@@ -273,20 +247,11 @@ const styles = StyleSheet.create({
   },
   resultsTitle: { fontSize: 20, fontWeight: '700', color: '#111827', marginBottom: 16 },
   resultsList: { flex: 1 },
-  resultCard: {
-    backgroundColor: '#F9FAFB',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
+  resultCard: { backgroundColor: '#F9FAFB', padding: 16, borderRadius: 12, marginBottom: 12 },
   resultHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
   resultIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
+    width: 48, height: 48, borderRadius: 12, alignItems: 'center',
+    justifyContent: 'center', marginRight: 16,
   },
   resultInfo: { flex: 1 },
   resultRisk: { fontSize: 16, fontWeight: '600', color: '#111827', marginBottom: 4 },
@@ -295,11 +260,6 @@ const styles = StyleSheet.create({
   probabilityTitle: { fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 12 },
   probabilityItem: { marginBottom: 8 },
   probabilityLabel: { fontSize: 12, color: '#6B7280', marginBottom: 4, fontWeight: '500' },
-  probabilityBarContainer: {
-    height: 6,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
+  probabilityBarContainer: { height: 6, backgroundColor: '#E5E7EB', borderRadius: 3, overflow: 'hidden' },
   probabilityBar: { height: '100%', borderRadius: 3 },
 });
