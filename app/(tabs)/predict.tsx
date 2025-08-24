@@ -5,9 +5,18 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  TextInput,
 } from 'react-native';
-import { FileText, Database, MessageSquare, TriangleAlert as AlertTriangle, TrendingUp, CircleCheck as CheckCircle } from 'lucide-react-native';
+import {
+  FileText,
+  Database,
+  MessageSquare,
+  TriangleAlert as AlertTriangle,
+  TrendingUp,
+  CircleCheck as CheckCircle,
+} from 'lucide-react-native';
 import { BuildingDataForm } from '@/components/forms/BuildingDataForm';
+import { ApiService } from '@/lib/api'; // ✅ Make sure ApiService has predictFromText()
 
 interface PredictionResult {
   Predicted_Risk: string;
@@ -18,12 +27,14 @@ interface PredictionResult {
 }
 
 export default function PredictScreen() {
-  const [activeTab, setActiveTab] = useState<'form' | 'csv' | 'text'>('form');
+  const [activeTab, setActiveTab] = useState<'form' | 'text'>('form'); // removed csv
   const [predictionResults, setPredictionResults] = useState<PredictionResult[]>([]);
+  const [textInput, setTextInput] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const tabs = [
     { id: 'form', title: 'Form Input', icon: Database },
-    { id: 'csv', title: 'CSV Upload', icon: FileText },
+    // { id: 'csv', title: 'CSV Upload', icon: FileText }, // ❌ removed CSV
     { id: 'text', title: 'Text Input', icon: MessageSquare },
   ];
 
@@ -47,6 +58,21 @@ export default function PredictScreen() {
 
   const handlePredictionComplete = (results: PredictionResult[]) => {
     setPredictionResults(results);
+  };
+
+  // ✅ NEW: handle text prediction
+  const handleTextPrediction = async () => {
+    if (!textInput.trim()) return;
+
+    try {
+      setLoading(true);
+      const predictions = await ApiService.predictFromText(textInput); // <-- your backend API
+      setPredictionResults(predictions);
+    } catch (error) {
+      console.error('Text prediction error:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -91,16 +117,25 @@ export default function PredictScreen() {
           <BuildingDataForm onPredictionComplete={handlePredictionComplete} />
         )}
 
-        ?
-
         {activeTab === 'text' && (
-          <View style={styles.comingSoon}>
-            <MessageSquare color="#9CA3AF" size={64} />
-            <Text style={styles.comingSoonTitle}>Text Input</Text>
-            <Text style={styles.comingSoonText}>
-              Interactive text input functionality will be available soon.
-              Use the form input for now.
-            </Text>
+          <View style={styles.textInputContainer}>
+            <Text style={styles.inputLabel}>Enter Building Data (Text):</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="Paste building details here..."
+              value={textInput}
+              onChangeText={setTextInput}
+              multiline
+            />
+            <TouchableOpacity
+              style={styles.predictButton}
+              onPress={handleTextPrediction}
+              disabled={loading}
+            >
+              <Text style={styles.predictButtonText}>
+                {loading ? 'Predicting...' : 'Predict Risk'}
+              </Text>
+            </TouchableOpacity>
           </View>
         )}
       </View>
@@ -115,11 +150,16 @@ export default function PredictScreen() {
               return (
                 <View key={index} style={styles.resultCard}>
                   <View style={styles.resultHeader}>
-                    <View style={[
-                      styles.resultIcon,
-                      { backgroundColor: `${getRiskColor(result.Predicted_Risk)}15` }
-                    ]}>
-                      <RiskIcon color={getRiskColor(result.Predicted_Risk)} size={24} />
+                    <View
+                      style={[
+                        styles.resultIcon,
+                        { backgroundColor: `${getRiskColor(result.Predicted_Risk)}15` },
+                      ]}
+                    >
+                      <RiskIcon
+                        color={getRiskColor(result.Predicted_Risk)}
+                        size={24}
+                      />
                     </View>
                     <View style={styles.resultInfo}>
                       <Text style={styles.resultRisk}>
@@ -130,11 +170,12 @@ export default function PredictScreen() {
                       </Text>
                     </View>
                   </View>
-                  
+
                   <View style={styles.probabilitySection}>
                     <Text style={styles.probabilityTitle}>Risk Probabilities:</Text>
-                    {['High', 'Medium', 'Low'].map(level => {
-                      const prob = result[`proba_${level}` as keyof PredictionResult] as number;
+                    {['High', 'Medium', 'Low'].map((level) => {
+                      const prob =
+                        result[`proba_${level}` as keyof PredictionResult] as number;
                       const percentage = Math.round(prob * 100);
                       return (
                         <View key={level} style={styles.probabilityItem}>
@@ -167,25 +208,10 @@ export default function PredictScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F9FAFB',
-  },
-  header: {
-    paddingTop: 60,
-    paddingHorizontal: 24,
-    paddingBottom: 24,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#6B7280',
-  },
+  container: { flex: 1, backgroundColor: '#F9FAFB' },
+  header: { paddingTop: 60, paddingHorizontal: 24, paddingBottom: 24 },
+  title: { fontSize: 32, fontWeight: '700', color: '#111827', marginBottom: 8 },
+  subtitle: { fontSize: 16, color: '#6B7280' },
   tabContainer: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
@@ -194,10 +220,7 @@ const styles = StyleSheet.create({
     padding: 4,
     marginBottom: 24,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
@@ -212,40 +235,29 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     gap: 8,
   },
-  activeTab: {
-    backgroundColor: '#EBF8FF',
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#6B7280',
-  },
-  activeTabText: {
-    color: '#3B82F6',
-    fontWeight: '600',
-  },
-  content: {
-    flex: 1,
-  },
-  comingSoon: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 40,
-  },
-  comingSoonTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#6B7280',
-    marginTop: 24,
+  activeTab: { backgroundColor: '#EBF8FF' },
+  tabText: { fontSize: 14, fontWeight: '500', color: '#6B7280' },
+  activeTabText: { color: '#3B82F6', fontWeight: '600' },
+  content: { flex: 1 },
+  textInputContainer: { padding: 20 },
+  inputLabel: { fontSize: 14, fontWeight: '600', marginBottom: 8, color: '#374151' },
+  textInput: {
+    height: 120,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    textAlignVertical: 'top',
     marginBottom: 12,
   },
-  comingSoonText: {
-    fontSize: 16,
-    color: '#9CA3AF',
-    textAlign: 'center',
-    lineHeight: 24,
+  predictButton: {
+    backgroundColor: '#3B82F6',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
   },
+  predictButtonText: { color: '#FFF', fontWeight: '600', fontSize: 16 },
   resultsContainer: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
@@ -254,34 +266,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     maxHeight: '50%',
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: -4,
-    },
+    shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 8,
   },
-  resultsTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 16,
-  },
-  resultsList: {
-    flex: 1,
-  },
+  resultsTitle: { fontSize: 20, fontWeight: '700', color: '#111827', marginBottom: 16 },
+  resultsList: { flex: 1 },
   resultCard: {
     backgroundColor: '#F9FAFB',
     padding: 16,
     borderRadius: 12,
     marginBottom: 12,
   },
-  resultHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
+  resultHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
   resultIcon: {
     width: 48,
     height: 48,
@@ -290,48 +288,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 16,
   },
-  resultInfo: {
-    flex: 1,
-  },
-  resultRisk: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  resultDescription: {
-    fontSize: 14,
-    color: '#6B7280',
-    lineHeight: 20,
-  },
-  probabilitySection: {
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-  },
-  probabilityTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 12,
-  },
-  probabilityItem: {
-    marginBottom: 8,
-  },
-  probabilityLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginBottom: 4,
-    fontWeight: '500',
-  },
+  resultInfo: { flex: 1 },
+  resultRisk: { fontSize: 16, fontWeight: '600', color: '#111827', marginBottom: 4 },
+  resultDescription: { fontSize: 14, color: '#6B7280', lineHeight: 20 },
+  probabilitySection: { paddingTop: 16, borderTopWidth: 1, borderTopColor: '#E5E7EB' },
+  probabilityTitle: { fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 12 },
+  probabilityItem: { marginBottom: 8 },
+  probabilityLabel: { fontSize: 12, color: '#6B7280', marginBottom: 4, fontWeight: '500' },
   probabilityBarContainer: {
     height: 6,
     backgroundColor: '#E5E7EB',
     borderRadius: 3,
     overflow: 'hidden',
   },
-  probabilityBar: {
-    height: '100%',
-    borderRadius: 3,
-  },
+  probabilityBar: { height: '100%', borderRadius: 3 },
 });
