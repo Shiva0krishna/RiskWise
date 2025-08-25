@@ -1,67 +1,113 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ChartBar as BarChart3, FileText, Shield, TrendingUp, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle } from 'lucide-react-native';
+import { Building, TrendingUp, Shield } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { ProjectSelector } from '@/components/dashboard/ProjectSelector';
+import { RiskGauge } from '@/components/dashboard/RiskGauge';
+import { RiskDriversPanel } from '@/components/dashboard/RiskDriversPanel';
+import { IoTSensorPanel } from '@/components/dashboard/IoTSensorPanel';
+import { ProjectKPIPanel } from '@/components/dashboard/ProjectKPIPanel';
+import { RiskTimelinePanel } from '@/components/dashboard/RiskTimelinePanel';
+import { ActionRecommendationPanel } from '@/components/dashboard/ActionRecommendationPanel';
 
-interface DashboardStats {
-  totalPredictions: number;
-  highRiskCount: number;
-  mediumRiskCount: number;
-  lowRiskCount: number;
-  recentPredictions: any[];
+interface Project {
+  id: string;
+  name: string;
+  description: string | null;
+  city: string | null;
+  structural_system: string | null;
+  progress_percent: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface DashboardData {
+  currentRisk: 'Low' | 'Medium' | 'High';
+  confidence: number;
+  riskDrivers: any[];
+  sensorData: any;
+  kpiData: any;
+  timelineData: any[];
+  recommendations: any[];
 }
 
 export default function DashboardScreen() {
   const { user } = useAuth();
-  const [stats, setStats] = useState<DashboardStats>({
-    totalPredictions: 0,
-    highRiskCount: 0,
-    mediumRiskCount: 0,
-    lowRiskCount: 0,
-    recentPredictions: [],
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [dashboardData, setDashboardData] = useState<DashboardData>({
+    currentRisk: 'Low',
+    confidence: 0.75,
+    riskDrivers: [],
+    sensorData: {
+      vibration: {
+        current: 2.3,
+        threshold: 5.0,
+        trend: [1.8, 2.1, 2.3, 2.7, 2.3, 2.1, 2.3],
+      },
+      craneAlerts: {
+        count: 3,
+        weeklyTrend: [1, 2, 0, 3, 1, 2, 3],
+      },
+      tilt: {
+        current: 0.8,
+        threshold: 2.0,
+      },
+    },
+    kpiData: {
+      schedule: {
+        delayIndex: [0.1, 0.15, 0.2, 0.25, 0.35, 0.4, 0.35],
+        currentDelay: 0.35,
+      },
+      cost: {
+        overrunPercent: 15.2,
+        baseline: 10.0,
+        trend: [5, 8, 12, 15, 18, 15, 15.2],
+      },
+      efficiency: {
+        current: 78,
+        target: 85,
+      },
+    },
+    timelineData: [],
+    recommendations: [],
   });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  useEffect(() => {
+    if (selectedProject) {
+      loadDashboardData();
+    }
+  }, [selectedProject]);
+
   const loadDashboardData = async () => {
-    if (!user) return;
+    if (!selectedProject || !user) return;
 
     try {
-      const { data: predictions, error } = await supabase
+      // Load predictions for this project
+      const { data: predictions, error: predictionsError } = await supabase
         .from('predictions')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('project_id', selectedProject.id)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (predictionsError) throw predictionsError;
 
-      const totalPredictions = predictions?.length || 0;
-      let highRiskCount = 0;
-      let mediumRiskCount = 0;
-      let lowRiskCount = 0;
+      // Load building data for this project
+      const { data: buildingData, error: buildingError } = await supabase
+        .from('building_data')
+        .select('*')
+        .eq('project_id', selectedProject.id)
+        .order('created_at', { ascending: false })
+        .limit(1);
 
-      predictions?.forEach((prediction) => {
-        const results = prediction.results;
-        if (results && Array.isArray(results)) {
-          results.forEach((result) => {
-            if (result && result.Predicted_Risk) {
-              if (result.Predicted_Risk === 'High') highRiskCount++;
-              else if (result.Predicted_Risk === 'Medium') mediumRiskCount++;
-              else if (result.Predicted_Risk === 'Low') lowRiskCount++;
-            }
-          });
-        }
-      });
+      if (buildingError) throw buildingError;
 
-      setStats({
-        totalPredictions,
-        highRiskCount,
-        mediumRiskCount,
-        lowRiskCount,
-        recentPredictions: predictions?.slice(0, 5) || [],
-      });
+      // Process data for dashboard
+      const processedData = processDashboardData(predictions || [], buildingData || []);
+      setDashboardData(processedData);
     } catch (error) {
       console.error('Error loading dashboard data:', error);
     } finally {
@@ -70,49 +116,214 @@ export default function DashboardScreen() {
     }
   };
 
-  useEffect(() => {
-    loadDashboardData();
-  }, [user]);
+  const processDashboardData = (predictions: any[], buildingData: any[]): DashboardData => {
+    // Get latest prediction for current risk
+    const latestPrediction = predictions[0];
+    let currentRisk: 'Low' | 'Medium' | 'High' = 'Low';
+    let confidence = 0.75;
+
+    if (latestPrediction && latestPrediction.results && latestPrediction.results.length > 0) {
+      const result = latestPrediction.results[0];
+      currentRisk = result.Predicted_Risk || 'Low';
+      confidence = Math.max(
+        result.proba_High || 0,
+        result.proba_Medium || 0,
+        result.proba_Low || 0
+      );
+    }
+
+    // Generate risk drivers from building data
+    const riskDrivers = buildingData.length > 0 ? generateRiskDrivers(buildingData[0]) : [];
+
+    // Generate timeline from predictions
+    const timelineData = predictions.slice(0, 10).reverse().map(p => ({
+      date: p.created_at,
+      riskLevel: p.results?.[0]?.Predicted_Risk || 'Low',
+      confidence: Math.max(
+        p.results?.[0]?.proba_High || 0,
+        p.results?.[0]?.proba_Medium || 0,
+        p.results?.[0]?.proba_Low || 0
+      ),
+    }));
+
+    // Generate recommendations based on risk drivers
+    const recommendations = generateRecommendations(riskDrivers, currentRisk);
+
+    return {
+      currentRisk,
+      confidence,
+      riskDrivers,
+      sensorData: dashboardData.sensorData, // Keep mock sensor data
+      kpiData: dashboardData.kpiData, // Keep mock KPI data
+      timelineData,
+      recommendations,
+    };
+  };
+
+  const generateRiskDrivers = (building: any) => {
+    const drivers = [];
+    
+    if (building.delay_index !== null) {
+      drivers.push({
+        factor: 'Delay Index',
+        value: building.delay_index,
+        threshold: 0.3,
+        importance: Math.min(building.delay_index / 0.3, 1),
+        status: building.delay_index > 0.3 ? 'critical' : building.delay_index > 0.2 ? 'warning' : 'normal',
+      });
+    }
+
+    if (building.cost_overrun_percent !== null) {
+      drivers.push({
+        factor: 'Cost Overrun %',
+        value: building.cost_overrun_percent,
+        threshold: 10,
+        importance: Math.min(building.cost_overrun_percent / 20, 1),
+        status: building.cost_overrun_percent > 15 ? 'critical' : building.cost_overrun_percent > 10 ? 'warning' : 'normal',
+      });
+    }
+
+    if (building.safety_incident_count !== null) {
+      drivers.push({
+        factor: 'Safety Incidents',
+        value: building.safety_incident_count,
+        threshold: 2,
+        importance: Math.min(building.safety_incident_count / 5, 1),
+        status: building.safety_incident_count > 3 ? 'critical' : building.safety_incident_count > 1 ? 'warning' : 'normal',
+      });
+    }
+
+    if (building.structural_risk_index !== null) {
+      drivers.push({
+        factor: 'Structural Risk Index',
+        value: building.structural_risk_index,
+        threshold: 0.7,
+        importance: building.structural_risk_index,
+        status: building.structural_risk_index > 0.8 ? 'critical' : building.structural_risk_index > 0.6 ? 'warning' : 'normal',
+      });
+    }
+
+    if (building.facade_complexity_index !== null) {
+      drivers.push({
+        factor: 'Facade Complexity',
+        value: building.facade_complexity_index,
+        threshold: 0.6,
+        importance: building.facade_complexity_index,
+        status: building.facade_complexity_index > 0.7 ? 'critical' : building.facade_complexity_index > 0.5 ? 'warning' : 'normal',
+      });
+    }
+
+    if (building.resource_allocation_efficiency !== null) {
+      drivers.push({
+        factor: 'Resource Efficiency',
+        value: building.resource_allocation_efficiency,
+        threshold: 0.8,
+        importance: 1 - building.resource_allocation_efficiency,
+        status: building.resource_allocation_efficiency < 0.6 ? 'critical' : building.resource_allocation_efficiency < 0.7 ? 'warning' : 'normal',
+      });
+    }
+
+    return drivers;
+  };
+
+  const generateRecommendations = (drivers: any[], riskLevel: string) => {
+    const recommendations = [];
+    
+    drivers.forEach((driver, index) => {
+      if (driver.status === 'critical') {
+        let recommendation = {
+          id: `rec-${index}`,
+          title: '',
+          description: '',
+          priority: 'high' as const,
+          category: 'schedule' as const,
+          action: '',
+        };
+
+        switch (driver.factor) {
+          case 'Delay Index':
+            recommendation = {
+              ...recommendation,
+              title: 'High Delay Index Detected',
+              description: `Current delay index (${driver.value.toFixed(2)}) exceeds threshold (${driver.threshold})`,
+              action: 'Recommend reallocating resources to critical path activities and facade works',
+              category: 'schedule',
+            };
+            break;
+          case 'Cost Overrun %':
+            recommendation = {
+              ...recommendation,
+              title: 'Cost Overrun Alert',
+              description: `Cost overrun (${driver.value.toFixed(1)}%) significantly above baseline`,
+              action: 'Review budget allocation and implement cost control measures',
+              category: 'cost',
+            };
+            break;
+          case 'Safety Incidents':
+            recommendation = {
+              ...recommendation,
+              title: 'Safety Incident Spike',
+              description: `${driver.value} safety incidents reported, above acceptable threshold`,
+              action: 'Conduct immediate safety audit and reinforce safety protocols',
+              category: 'safety',
+            };
+            break;
+          case 'Structural Risk Index':
+            recommendation = {
+              ...recommendation,
+              title: 'Structural Risk Concern',
+              description: `High structural risk index (${driver.value.toFixed(2)}) requires attention`,
+              action: 'Schedule structural engineering review and inspection',
+              category: 'quality',
+            };
+            break;
+        }
+        
+        recommendations.push(recommendation);
+      }
+    });
+
+    // Add general recommendations based on risk level
+    if (riskLevel === 'High' && recommendations.length === 0) {
+      recommendations.push({
+        id: 'general-high',
+        title: 'High Risk Level Detected',
+        description: 'Multiple factors contributing to elevated risk assessment',
+        priority: 'high' as const,
+        category: 'schedule' as const,
+        action: 'Implement comprehensive risk mitigation strategy and increase monitoring frequency',
+      });
+    }
+
+    return recommendations;
+  };
 
   const onRefresh = () => {
     setRefreshing(true);
     loadDashboardData();
   };
 
-  const quickActions = [
-    {
-      icon: FileText,
-      title: 'New Prediction',
-      description: 'Create risk assessment',
-      color: '#3B82F6',
-      route: '/(tabs)/predict',
-    },
-    {
-      icon: BarChart3,
-      title: 'View History',
-      description: 'Analysis history',
-      color: '#10B981',
-      route: '/(tabs)/predictions',
-    },
-  ];
-
-  const getRiskColor = (risk: string) => {
-    switch (risk) {
-      case 'High': return '#EF4444';
-      case 'Medium': return '#F59E0B';
-      case 'Low': return '#10B981';
-      default: return '#6B7280';
-    }
-  };
-
-  const getRiskIcon = (risk: string) => {
-    switch (risk) {
-      case 'High': return AlertTriangle;
-      case 'Medium': return TrendingUp;
-      case 'Low': return CheckCircle;
-      default: return Shield;
-    }
-  };
+  if (!selectedProject) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Risk Dashboard</Text>
+          <Text style={styles.subtitle}>Select a project to view risk analytics</Text>
+        </View>
+        <ProjectSelector
+          selectedProject={selectedProject}
+          onProjectSelect={setSelectedProject}
+        />
+        <View style={styles.emptyDashboard}>
+          <Building color="#9CA3AF" size={64} />
+          <Text style={styles.emptyText}>No Project Selected</Text>
+          <Text style={styles.emptySubtext}>
+            Create or select a project to start monitoring risks
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <ScrollView 
@@ -122,128 +333,68 @@ export default function DashboardScreen() {
       }
     >
       <LinearGradient
-        colors={['#3B82F6', '#6366F1']}
+        colors={['#1E40AF', '#3B82F6']}
         style={styles.header}
       >
-        <Text style={styles.greeting}>Welcome back,</Text>
-        <Text style={styles.userName}>{user?.user_metadata?.full_name || 'User'}!</Text>
-        <Text style={styles.subtitle}>Risk Assessment Dashboard</Text>
+        <Text style={styles.title}>Live Risk Dashboard</Text>
+        <Text style={styles.subtitle}>Real-time project risk monitoring</Text>
       </LinearGradient>
 
+      <ProjectSelector
+        selectedProject={selectedProject}
+        onProjectSelect={setSelectedProject}
+      />
+
       <View style={styles.content}>
-        {/* Stats Overview */}
-        <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <View style={styles.statIcon}>
-              <BarChart3 color="#3B82F6" size={24} />
+        {/* Project Overview */}
+        <View style={styles.overviewContainer}>
+          <View style={styles.projectInfoCard}>
+            <View style={styles.projectHeader}>
+              <Building color="#3B82F6" size={24} />
+              <View style={styles.projectInfo}>
+                <Text style={styles.projectName}>{selectedProject.name}</Text>
+                <Text style={styles.projectDetails}>
+                  {selectedProject.city} • {selectedProject.structural_system}
+                </Text>
+                <Text style={styles.projectProgress}>
+                  Progress: {selectedProject.progress_percent || 0}%
+                </Text>
+              </View>
             </View>
-            <Text style={styles.statValue}>{stats.totalPredictions}</Text>
-            <Text style={styles.statLabel}>Total Predictions</Text>
+            
+            <View style={styles.progressBar}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${selectedProject.progress_percent || 0}%` },
+                ]}
+              />
+            </View>
           </View>
 
-          <View style={styles.statCard}>
-            <View style={[styles.statIcon, { backgroundColor: '#FEF2F2' }]}>
-              <AlertTriangle color="#EF4444" size={24} />
-            </View>
-            <Text style={styles.statValue}>{stats.highRiskCount}</Text>
-            <Text style={styles.statLabel}>High Risk</Text>
-          </View>
-
-          <View style={styles.statCard}>
-            <View style={[styles.statIcon, { backgroundColor: '#FFFBEB' }]}>
-              <TrendingUp color="#F59E0B" size={24} />
-            </View>
-            <Text style={styles.statValue}>{stats.mediumRiskCount}</Text>
-            <Text style={styles.statLabel}>Medium Risk</Text>
-          </View>
-
-          <View style={styles.statCard}>
-            <View style={[styles.statIcon, { backgroundColor: '#F0FDF4' }]}>
-              <CheckCircle color="#10B981" size={24} />
-            </View>
-            <Text style={styles.statValue}>{stats.lowRiskCount}</Text>
-            <Text style={styles.statLabel}>Low Risk</Text>
-          </View>
-        </View>
-
-        {/* Quick Actions */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Quick Actions</Text>
-          <View style={styles.actionsContainer}>
-            {quickActions.map((action, index) => (
-              <TouchableOpacity 
-                key={index} 
-                style={styles.actionCard}
-                onPress={() => {
-                  if (action.route === '/(tabs)/upload') {
-                    // Navigate to upload tab
-                  } else if (action.route === '/(tabs)/predictions') {
-                    // Navigate to predictions tab
-                  }
-                }}
-              >
-                <View style={[styles.actionIcon, { backgroundColor: `${action.color}15` }]}>
-                  <action.icon color={action.color} size={28} />
-                </View>
-                <Text style={styles.actionTitle}>{action.title}</Text>
-                <Text style={styles.actionDescription}>{action.description}</Text>
-              </TouchableOpacity>
-            ))}
+          <View style={styles.riskGaugeCard}>
+            <Text style={styles.cardTitle}>Current Risk Level</Text>
+            <RiskGauge
+              riskLevel={dashboardData.currentRisk}
+              confidence={dashboardData.confidence}
+            />
           </View>
         </View>
 
-        {/* Recent Predictions */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recent Predictions</Text>
-          {stats.recentPredictions.length > 0 ? (
-            <View style={styles.predictionsContainer}>
-              {stats.recentPredictions.map((prediction, index) => {
-                const firstResult = Array.isArray(prediction.results) ? prediction.results[0] : null;
-                const RiskIcon = firstResult ? getRiskIcon(firstResult.Predicted_Risk) : Shield;
-                
-                return (
-                  <View key={index} style={styles.predictionCard}>
-                    <View style={styles.predictionHeader}>
-                      <View style={[
-                        styles.predictionIcon,
-                        { backgroundColor: `${getRiskColor(firstResult?.Predicted_Risk || 'Low')}15` }
-                      ]}>
-                        <RiskIcon 
-                          color={getRiskColor(firstResult?.Predicted_Risk || 'Low')} 
-                          size={20} 
-                        />
-                      </View>
-                      <View style={styles.predictionInfo}>
-                        <Text style={styles.predictionType}>
-                          {prediction.prediction_type.toUpperCase()} Prediction
-                        </Text>
-                        <Text style={styles.predictionDate}>
-                          {new Date(prediction.created_at).toLocaleDateString()}
-                        </Text>
-                      </View>
-                      <View style={styles.predictionRisk}>
-                        <Text style={[
-                          styles.riskBadge,
-                          { color: getRiskColor(firstResult?.Predicted_Risk || 'Low') }
-                        ]}>
-                          {firstResult?.Predicted_Risk || 'Unknown'}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-          ) : (
-            <View style={styles.emptyState}>
-              <Shield color="#9CA3AF" size={48} />
-              <Text style={styles.emptyStateText}>No predictions yet</Text>
-              <Text style={styles.emptyStateSubtext}>
-                Use the Predict tab to create your first risk assessment
-              </Text>
-            </View>
-          )}
-        </View>
+        {/* Risk Drivers */}
+        <RiskDriversPanel drivers={dashboardData.riskDrivers} />
+
+        {/* IoT Sensors */}
+        <IoTSensorPanel sensorData={dashboardData.sensorData} />
+
+        {/* Project KPIs */}
+        <ProjectKPIPanel kpiData={dashboardData.kpiData} />
+
+        {/* Risk Timeline */}
+        <RiskTimelinePanel timelineData={dashboardData.timelineData} />
+
+        {/* Action Recommendations */}
+        <ActionRecommendationPanel recommendations={dashboardData.recommendations} />
       </View>
     </ScrollView>
   );
@@ -261,82 +412,39 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
   },
-  greeting: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#E5E7EB',
-    marginBottom: 4,
-  },
-  userName: {
+  title: {
     fontSize: 28,
     fontWeight: '700',
     color: '#FFFFFF',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   subtitle: {
     fontSize: 16,
-    color: '#D1D5DB',
+    color: '#E5E7EB',
   },
   content: {
     padding: 24,
   },
-  statsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: 32,
-  },
-  statCard: {
-    backgroundColor: '#FFFFFF',
-    width: '48%',
-    padding: 20,
-    borderRadius: 16,
-    alignItems: 'center',
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  statIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: '#EBF8FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    textAlign: 'center',
-    fontWeight: '500',
-  },
-  section: {
-    marginBottom: 32,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 16,
-  },
-  actionsContainer: {
+  overviewContainer: {
     flexDirection: 'row',
     gap: 16,
+    marginBottom: 24,
   },
-  actionCard: {
+  projectInfoCard: {
+    flex: 2,
+    backgroundColor: '#FFFFFF',
+    padding: 20,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  riskGaugeCard: {
     flex: 1,
     backgroundColor: '#FFFFFF',
     padding: 20,
@@ -351,93 +459,66 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  actionIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  actionTitle: {
-    fontSize: 16,
+  cardTitle: {
+    fontSize: 14,
     fontWeight: '600',
-    color: '#111827',
-    marginBottom: 4,
+    color: '#374151',
+    marginBottom: 16,
     textAlign: 'center',
   },
-  actionDescription: {
-    fontSize: 12,
-    color: '#6B7280',
-    textAlign: 'center',
-  },
-  predictionsContainer: {
-    gap: 12,
-  },
-  predictionCard: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  predictionHeader: {
+  projectHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 16,
   },
-  predictionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  predictionInfo: {
+  projectInfo: {
+    marginLeft: 12,
     flex: 1,
   },
-  predictionType: {
-    fontSize: 14,
-    fontWeight: '600',
+  projectName: {
+    fontSize: 18,
+    fontWeight: '700',
     color: '#111827',
+    marginBottom: 4,
+  },
+  projectDetails: {
+    fontSize: 14,
+    color: '#6B7280',
     marginBottom: 2,
   },
-  predictionDate: {
+  projectProgress: {
     fontSize: 12,
-    color: '#6B7280',
+    color: '#9CA3AF',
   },
-  predictionRisk: {
-    alignItems: 'flex-end',
+  progressBar: {
+    height: 8,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 4,
+    overflow: 'hidden',
   },
-  riskBadge: {
-    fontSize: 12,
-    fontWeight: '600',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    backgroundColor: 'rgba(0,0,0,0.05)',
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#3B82F6',
+    borderRadius: 4,
   },
-  emptyState: {
+  emptyDashboard: {
+    flex: 1,
     alignItems: 'center',
-    paddingVertical: 40,
+    justifyContent: 'center',
+    paddingVertical: 80,
   },
-  emptyStateText: {
-    fontSize: 18,
-    fontWeight: '600',
+  emptyText: {
+    fontSize: 24,
+    fontWeight: '700',
     color: '#6B7280',
-    marginTop: 16,
-    marginBottom: 8,
+    marginTop: 24,
+    marginBottom: 12,
   },
-  emptyStateSubtext: {
-    fontSize: 14,
+  emptySubtext: {
+    fontSize: 16,
     color: '#9CA3AF',
     textAlign: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 40,
+    lineHeight: 24,
   },
 });

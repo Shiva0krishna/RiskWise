@@ -42,6 +42,35 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 export type Database = {
   public: {
     Tables: {
+      projects: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          description: string | null;
+          city: string | null;
+          structural_system: string | null;
+          progress_percent: number | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          name: string;
+          description?: string | null;
+          city?: string | null;
+          structural_system?: string | null;
+          progress_percent?: number | null;
+        };
+        Update: {
+          name?: string;
+          description?: string | null;
+          city?: string | null;
+          structural_system?: string | null;
+          progress_percent?: number | null;
+          updated_at?: string;
+        };
+      };
       profiles: {
         Row: {
           id: string;
@@ -73,6 +102,7 @@ export type Database = {
           results: any;
           file_name: string | null;
           created_at: string;
+          project_id: string | null;
         };
         Insert: {
           user_id: string;
@@ -80,12 +110,14 @@ export type Database = {
           input_data: any;
           results: any;
           file_name?: string | null;
+          project_id?: string | null;
         };
         Update: {
           prediction_type?: 'csv' | 'json' | 'text';
           input_data?: any;
           results?: any;
           file_name?: string | null;
+          project_id?: string | null;
         };
       };
       building_data: {
@@ -117,6 +149,7 @@ export type Database = {
           cobie_systems: number | null;
           created_at: string;
           updated_at: string;
+          project_id: string | null;
         };
         Insert: {
           user_id: string;
@@ -143,6 +176,7 @@ export type Database = {
           crane_alerts_count?: number | null;
           cobie_assets?: number | null;
           cobie_systems?: number | null;
+          project_id?: string | null;
         };
         Update: {
           building_id?: string;
@@ -169,6 +203,7 @@ export type Database = {
           cobie_assets?: number | null;
           cobie_systems?: number | null;
           updated_at?: string;
+          project_id?: string | null;
         };
       };
     };
