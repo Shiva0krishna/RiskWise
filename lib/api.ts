@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = 'http://localhost:8000'; // Update this to your actual API URL
 
 export interface PredictionResult {
   Predicted_Risk: string;

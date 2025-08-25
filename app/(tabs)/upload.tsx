@@ -6,6 +6,7 @@ import {
   ScrollView,
   Alert,
   Platform,
+  Switch,
 } from 'react-native';
 import {
   Upload,
