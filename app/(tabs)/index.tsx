@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Building, TrendingUp, Shield, Target, ChartBar as BarChart3 } from 'lucide-react-native'} from '@/contexts/AuthContext';
+import { Building, TrendingUp, Shield, Target, ChartBar as BarChart3 } from 'lucide-react-native'} 
+import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { ProjectSelector } from '@/components/dashboard/ProjectSelector';
 import { RiskGauge } from '@/components/dashboard/RiskGauge';
