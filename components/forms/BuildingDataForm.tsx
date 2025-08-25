@@ -14,6 +14,11 @@ import { ApiService } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 
+interface Project {
+  id: string;
+  name: string;
+}
+
 interface BuildingData {
   Building_ID: string;
   City: string;
@@ -42,9 +47,10 @@ interface BuildingData {
 
 interface BuildingDataFormProps {
   onPredictionComplete: (results: any[]) => void;
+  selectedProject?: Project | null;
 }
 
-export function BuildingDataForm({ onPredictionComplete }: BuildingDataFormProps) {
+export function BuildingDataForm({ onPredictionComplete, selectedProject }: BuildingDataFormProps) {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState<Partial<BuildingData>>({
@@ -90,16 +96,50 @@ export function BuildingDataForm({ onPredictionComplete }: BuildingDataFormProps
 
       // Save to database
       if (user) {
-        const { error } = await supabase
+        // Save prediction
+        const { error: predictionError } = await supabase
           .from('predictions')
           .insert({
             user_id: user.id,
             prediction_type: 'json',
             input_data: formData,
             results: predictions,
+            project_id: selectedProject?.id || null,
           });
 
-        if (error) throw error;
+        if (predictionError) throw predictionError;
+
+        // Save building data
+        const { error: buildingError } = await supabase
+          .from('building_data')
+          .insert({
+            user_id: user.id,
+            building_id: formData.Building_ID || '',
+            city: formData.City || null,
+            floors: formData.Floors || null,
+            height_m: formData.Height_m || null,
+            total_area_m2: formData.Total_Area_m2 || null,
+            material: formData.Material || null,
+            structural_system: formData.Structural_System || null,
+            structural_risk_index: formData.Structural_Risk_Index || null,
+            facade_complexity_index: formData.Facade_Complexity_Index || null,
+            project_duration_days: formData.Project_Duration_days || null,
+            delay_index: formData.Delay_Index || null,
+            cost_overrun_percent: formData['Cost_Overrun_%'] || null,
+            safety_incident_count: formData.Safety_Incident_Count || null,
+            resource_allocation_efficiency: formData.Resource_Allocation_Efficiency || null,
+            max_vibration_mm_s: formData.Max_Vibration_mm_s || null,
+            avg_tilt_deg: formData.Avg_Tilt_deg || null,
+            avg_temperature_c: formData.Avg_Temperature_C || null,
+            humidity_percent: formData['Humidity_%'] || null,
+            equipment_usage_rate_percent: formData['Equipment_Usage_Rate_%'] || null,
+            crane_alerts_count: formData.Crane_Alerts_Count || null,
+            cobie_assets: formData.COBie_Assets || null,
+            cobie_systems: formData.COBie_Systems || null,
+            project_id: selectedProject?.id || null,
+          });
+
+        if (buildingError) throw buildingError;
       }
 
       onPredictionComplete(predictions);

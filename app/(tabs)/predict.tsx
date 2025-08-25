@@ -18,6 +18,18 @@ import {
   CircleCheck as CheckCircle,
 } from 'lucide-react-native';
 import { BuildingDataForm } from '@/components/forms/BuildingDataForm';
+import { ProjectSelector } from '@/components/dashboard/ProjectSelector';
+
+interface Project {
+  id: string;
+  name: string;
+  description: string | null;
+  city: string | null;
+  structural_system: string | null;
+  progress_percent: number | null;
+  created_at: string;
+  updated_at: string;
+}
 
 interface PredictionResult {
   Predicted_Risk: string;
@@ -29,6 +41,7 @@ interface PredictionResult {
 
 export default function PredictScreen() {
   const [activeTab, setActiveTab] = useState<'form' | 'text'>('form');
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [predictionResults, setPredictionResults] = useState<PredictionResult[]>([]);
   const [inputText, setInputText] = useState('');
 
@@ -108,6 +121,11 @@ export default function PredictScreen() {
         </Text>
       </View>
 
+      <ProjectSelector
+        selectedProject={selectedProject}
+        onProjectSelect={setSelectedProject}
+      />
+
       {/* Tab Navigation */}
       <View style={styles.tabContainer}>
         {tabs.map((tab) => (
@@ -135,7 +153,10 @@ export default function PredictScreen() {
       {/* Content */}
       <View style={styles.content}>
         {activeTab === 'form' && (
-          <BuildingDataForm onPredictionComplete={handlePredictionComplete} />
+          <BuildingDataForm 
+            onPredictionComplete={handlePredictionComplete}
+            selectedProject={selectedProject}
+          />
         )}
 
         {activeTab === 'text' && (
