@@ -20,6 +20,19 @@ import { Button } from '@/components/ui/Button';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { PredictionResults } from '@/components/prediction/PredictionResults';
+import { ProjectSelector } from '@/components/dashboard/ProjectSelector';
+
+interface Project {
+  id: string;
+  name: string;
+  description: string | null;
+  city: string | null;
+  structural_system: string | null;
+  progress_percent: number | null;
+  created_at: string;
+  updated_at: string;
+}
 interface UploadResult {
   fileName: string;
   results: any[];
@@ -29,8 +42,11 @@ interface UploadResult {
 
 export default function UploadScreen() {
   const { user } = useAuth();
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [saveToProject, setSaveToProject] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadResults, setUploadResults] = useState<UploadResult[]>([]);
+  const [latestPredictions, setLatestPredictions] = useState<any[]>([]);
 
   const handleFileUpload = async () => {
     try {
@@ -53,14 +69,26 @@ export default function UploadScreen() {
           ? apiResponse.predictions
           : [];
 
+        // Show results immediately
+        setLatestPredictions(predictions);
+
         if (user) {
-          const { error } = await supabase.from('predictions').insert({
-            user_id: user.id,
-            prediction_type: 'csv',
-            input_data: { file_name: file.name },
-            results: predictions,
-            file_name: file.name,
-          });
+          const { error } = await supabase
+            .from('predictions')
+            .insert({
+              user_id: user.id,
+              prediction_type: 'csv',
+              input_data: { file_name: file.name },
+              results: predictions,
+              file_name: file.name,
+              project_id: saveToProject ? selectedProject?.id || null : null,
+              risk_level: predictions.length > 0 ? predictions[0].Predicted_Risk : null,
+              confidence: predictions.length > 0 ? Math.max(
+                predictions[0].proba_High || 0,
+                predictions[0].proba_Medium || 0,
+                predictions[0].proba_Low || 0
+              ) : null,
+            });
 
           if (error) throw error;
         }
@@ -187,6 +215,34 @@ export default function UploadScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Upload & Analyze</Text>
+        <Text style={styles.subtitle}>Upload CSV files for batch risk analysis</Text>
+      </View>
+
+      <ProjectSelector
+        selectedProject={selectedProject}
+        onProjectSelect={setSelectedProject}
+      />
+
+      {/* Save to Project Toggle */}
+      <View style={styles.saveToggleContainer}>
+        <View style={styles.saveToggleContent}>
+          <Text style={styles.saveToggleLabel}>Save to Project</Text>
+          <Text style={styles.saveToggleDescription}>
+            {saveToProject 
+              ? 'Results will be saved to the selected project' 
+              : 'Results will be generated for analysis only'}
+          </Text>
+        </View>
+        <Switch
+          value={saveToProject}
+          onValueChange={setSaveToProject}
+          trackColor={{ false: '#D1D5DB', true: '#93C5FD' }}
+          thumbColor={saveToProject ? '#3B82F6' : '#6B7280'}
+        />
+      </View>
+
       {/* Upload Section */}
       <View style={styles.card}>
         <Upload color="#3B82F6" size={48} />
@@ -214,6 +270,13 @@ export default function UploadScreen() {
           style={styles.uploadButton}
         />
       </View>
+
+      {/* Show latest predictions immediately */}
+      {latestPredictions.length > 0 && (
+        <View style={styles.latestResults}>
+          <PredictionResults results={latestPredictions} />
+        </View>
+      )}
 
       {/* Results Section */}
       {uploadResults.length > 0 && (
@@ -291,12 +354,27 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F9FAFB',
-    padding: 16,
+  },
+  header: {
+    paddingTop: 60,
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#6B7280',
   },
   card: {
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 20,
+    marginHorizontal: 24,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOpacity: 0.08,
@@ -304,7 +382,36 @@ const styles = StyleSheet.create({
     elevation: 3,
     marginBottom: 20,
   },
-  title: {
+  saveToggleContainer: {
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 24,
+    marginBottom: 16,
+    padding: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  saveToggleContent: {
+    flex: 1,
+    marginRight: 16,
+  },
+  saveToggleLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  saveToggleDescription: {
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 20,
+  },
+  cardTitle: {
     fontSize: 20,
     fontWeight: '700',
     marginTop: 12,
@@ -320,8 +427,13 @@ const styles = StyleSheet.create({
     marginTop: 16,
     alignSelf: 'stretch',
   },
+  latestResults: {
+    paddingHorizontal: 24,
+    marginBottom: 20,
+  },
   section: {
     marginTop: 8,
+    paddingHorizontal: 24,
   },
   sectionTitle: {
     fontSize: 18,

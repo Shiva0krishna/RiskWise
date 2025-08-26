@@ -8,7 +8,7 @@ import { GeminiService } from '@/lib/gemini';
 import { ProjectSelector } from '@/components/dashboard/ProjectSelector';
 import { RiskGauge } from '@/components/dashboard/RiskGauge';
 import { RiskDriversPanel } from '@/components/dashboard/RiskDriversPanel';
-import { BuildingAnalyticsPanel } from '@/components/dashboard/BuildingAnalyticsPanel';
+import { IoTSensorPanel } from '@/components/dashboard/IoTSensorPanel';
 import { ProjectKPIPanel } from '@/components/dashboard/ProjectKPIPanel';
 import { RiskTimelinePanel } from '@/components/dashboard/RiskTimelinePanel';
 import { ActionRecommendationPanel } from '@/components/dashboard/ActionRecommendationPanel';
@@ -60,6 +60,43 @@ export default function DashboardScreen() {
   });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Set up real-time subscription for dashboard updates
+  useEffect(() => {
+    if (!selectedProject || !user) return;
+
+    const channel = supabase
+      .channel('dashboard-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'building_data',
+          filter: `project_id=eq.${selectedProject.id}`,
+        },
+        () => {
+          loadDashboardData();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'predictions',
+          filter: `project_id=eq.${selectedProject.id}`,
+        },
+        () => {
+          loadDashboardData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedProject, user]);
 
   useEffect(() => {
     if (selectedProject) {
@@ -450,7 +487,7 @@ export default function DashboardScreen() {
         <RiskDriversPanel drivers={dashboardData.riskDrivers} />
 
         {/* Building Analytics */}
-        <BuildingAnalyticsPanel selectedProjectId={selectedProject.id} />
+        <IoTSensorPanel selectedProjectId={selectedProject.id} />
 
         {/* Project KPIs */}
         <ProjectKPIPanel kpiData={dashboardData.kpiData} />

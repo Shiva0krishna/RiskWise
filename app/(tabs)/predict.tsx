@@ -23,6 +23,7 @@ import { supabase } from '@/lib/supabase';
 import { BuildingDataForm } from '@/components/forms/BuildingDataForm';
 import { ProjectSelector } from '@/components/dashboard/ProjectSelector';
 import { Button } from '@/components/ui/Button';
+import { PredictionResults } from '@/components/prediction/PredictionResults';
 
 interface Project {
   id: string;
@@ -105,6 +106,12 @@ export default function PredictScreen() {
           input_data: { interactive_text: inputText },
           results: predictions,
           project_id: selectedProject?.id || null,
+          risk_level: predictions.length > 0 ? predictions[0].Predicted_Risk : null,
+          confidence: predictions.length > 0 ? Math.max(
+            predictions[0].proba_High || 0,
+            predictions[0].proba_Medium || 0,
+            predictions[0].proba_Low || 0
+          ) : null,
         });
 
         if (error) throw error;
@@ -222,70 +229,7 @@ export default function PredictScreen() {
 
         {/* Results directly below input */}
         {predictionResults.length > 0 && (
-          <View style={styles.resultsContainer}>
-            <Text style={styles.resultsTitle}>Prediction Results</Text>
-            {predictionResults.map((result, index) => {
-              const RiskIcon = getRiskIcon(result.Predicted_Risk);
-              return (
-                <View key={index} style={styles.resultCard}>
-                  <View style={styles.resultHeader}>
-                    <View
-                      style={[
-                        styles.resultIcon,
-                        {
-                          backgroundColor: `${getRiskColor(
-                            result.Predicted_Risk
-                          )}15`,
-                        },
-                      ]}
-                    >
-                      <RiskIcon
-                        color={getRiskColor(result.Predicted_Risk)}
-                        size={24}
-                      />
-                    </View>
-                    <View style={styles.resultInfo}>
-                      <Text style={styles.resultRisk}>
-                        Risk Level: {result.Predicted_Risk}
-                      </Text>
-                      <Text style={styles.resultDescription}>
-                        {result.description}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.probabilitySection}>
-                    <Text style={styles.probabilityTitle}>
-                      Risk Probabilities:
-                    </Text>
-                    {['High', 'Medium', 'Low'].map((level) => {
-                      const prob =
-                        result[`proba_${level}` as keyof PredictionResult] as number;
-                      const percentage = Math.round(prob * 100);
-                      return (
-                        <View key={level} style={styles.probabilityItem}>
-                          <Text style={styles.probabilityLabel}>
-                            {level}: {percentage}%
-                          </Text>
-                          <View style={styles.probabilityBarContainer}>
-                            <View
-                              style={[
-                                styles.probabilityBar,
-                                {
-                                  width: `${percentage}%`,
-                                  backgroundColor: getRiskColor(level),
-                                },
-                              ]}
-                            />
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                </View>
-              );
-            })}
-          </View>
+          <PredictionResults results={predictionResults} />
         )}
       </View>
     </ScrollView>
@@ -383,63 +327,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 24,
   },
-  resultsContainer: {
-    marginTop: 20,
-  },
-  resultsTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 16,
-  },
-  resultCard: {
-    backgroundColor: '#F9FAFB',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  resultHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  resultIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  resultInfo: { flex: 1 },
-  resultRisk: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  resultDescription: { fontSize: 14, color: '#6B7280', lineHeight: 20 },
-  probabilitySection: {
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-  },
-  probabilityTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 12,
-  },
-  probabilityItem: { marginBottom: 8 },
-  probabilityLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginBottom: 4,
-    fontWeight: '500',
-  },
-  probabilityBarContainer: {
-    height: 6,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  probabilityBar: { height: '100%', borderRadius: 3 },
 });

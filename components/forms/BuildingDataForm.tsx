@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/Button';
 import { ApiService } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { PredictionResults } from '@/components/prediction/PredictionResults';
 
 interface Project {
   id: string;
@@ -54,6 +55,7 @@ interface BuildingDataFormProps {
 export function BuildingDataForm({ onPredictionComplete, selectedProject, saveToProject = true }: BuildingDataFormProps) {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [predictionResults, setPredictionResults] = useState<any[]>([]);
   const [formData, setFormData] = useState<Partial<BuildingData>>({
     Building_ID: '',
     City: '',
@@ -95,28 +97,20 @@ export function BuildingDataForm({ onPredictionComplete, selectedProject, saveTo
       // Call prediction API
       const predictions = await ApiService.predictFromJson(formData);
 
+      // Show results immediately
+      setPredictionResults(predictions);
+      onPredictionComplete(predictions);
+
       // Save to database if user wants to save to project
       if (saveToProject && user) {
-        // Save prediction
-        const { error: predictionError } = await supabase
-          .from('predictions')
-          .insert({
-            user_id: user.id,
-            prediction_type: 'json',
-            input_data: formData,
-            results: predictions,
-            project_id: selectedProject?.id || null,
-          });
-
-        if (predictionError) throw predictionError;
-
-        // Save building data
-        const { error: buildingError } = await supabase
+        // Save building data first
+        const { data: buildingDataResult, error: buildingError } = await supabase
           .from('building_data')
           .insert({
             user_id: user.id,
             building_id: formData.Building_ID || '',
             city: formData.City || null,
+            comparable_project: formData.Comparable_Project || null,
             floors: formData.Floors || null,
             height_m: formData.Height_m || null,
             total_area_m2: formData.Total_Area_m2 || null,
@@ -138,13 +132,32 @@ export function BuildingDataForm({ onPredictionComplete, selectedProject, saveTo
             cobie_assets: formData.COBie_Assets || null,
             cobie_systems: formData.COBie_Systems || null,
             project_id: selectedProject?.id || null,
-            risk_level: predictions.length > 0 ? predictions[0].Predicted_Risk : null,
-          });
+          })
+          .select()
+          .single();
 
         if (buildingError) throw buildingError;
-      }
 
-      onPredictionComplete(predictions);
+        // Save prediction with building data reference
+        const { error: predictionError } = await supabase
+          .from('predictions')
+          .insert({
+            user_id: user.id,
+            prediction_type: 'json',
+            input_data: formData,
+            results: predictions,
+            project_id: selectedProject?.id || null,
+            risk_level: predictions.length > 0 ? predictions[0].Predicted_Risk : null,
+            confidence: predictions.length > 0 ? Math.max(
+              predictions[0].proba_High || 0,
+              predictions[0].proba_Medium || 0,
+              predictions[0].proba_Low || 0
+            ) : null,
+            building_data_id: buildingDataResult?.id || null,
+          });
+
+        if (predictionError) throw predictionError;
+      }
 
       if (!saveToProject) {
         Alert.alert('Prediction Complete', 'Results generated (not saved to project)');
@@ -370,6 +383,13 @@ export function BuildingDataForm({ onPredictionComplete, selectedProject, saveTo
           loading={loading}
           style={styles.submitButton}
         />
+
+        {/* Show results immediately below form */}
+        {predictionResults.length > 0 && (
+          <View style={styles.resultsSection}>
+            <PredictionResults results={predictionResults} />
+          </View>
+        )}
       </View>
     </ScrollView>
   );
@@ -415,5 +435,11 @@ const styles = StyleSheet.create({
   submitButton: {
     marginTop: 24,
     backgroundColor: '#3B82F6',
+  },
+  resultsSection: {
+    marginTop: 32,
+    paddingTop: 24,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
   },
 });

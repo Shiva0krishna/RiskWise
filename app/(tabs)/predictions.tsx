@@ -86,9 +86,9 @@ export default function PredictionsScreen() {
 
   const calculateRiskSummary = (results: any[]) => {
     const summary = { High: 0, Medium: 0, Low: 0 };
-    if (Array.isArray(results)) {
+    if (Array.isArray(results) && results.length > 0) {
       results.forEach(result => {
-        if (result.Predicted_Risk in summary) {
+        if (result && result.Predicted_Risk && result.Predicted_Risk in summary) {
           summary[result.Predicted_Risk as keyof typeof summary]++;
         }
       });
@@ -148,7 +148,8 @@ export default function PredictionsScreen() {
 
           <View style={styles.resultsSection}>
             <Text style={styles.sectionTitle}>Individual Results</Text>
-            {selectedPrediction.results.map((result, index) => {
+            {Array.isArray(selectedPrediction.results) && selectedPrediction.results.map((result, index) => {
+              if (!result || !result.Predicted_Risk) return null;
               const RiskIcon = getRiskIcon(result.Predicted_Risk);
               return (
                 <View key={index} style={styles.resultItem}>
@@ -225,7 +226,7 @@ export default function PredictionsScreen() {
             {predictions.map((prediction) => {
               const TypeIcon = getTypeIcon(prediction.prediction_type);
               const riskSummary = calculateRiskSummary(prediction.results);
-              const totalResults = prediction.results.length;
+              const totalResults = Array.isArray(prediction.results) ? prediction.results.length : 0;
 
               return (
                 <TouchableOpacity

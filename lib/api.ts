@@ -1,4 +1,6 @@
-const API_BASE_URL = 'http://localhost:8000'; // Update this to your actual API URL
+import Constants from 'expo-constants';
+
+const API_BASE_URL = Constants.expoConfig?.extra?.apiBaseUrl || process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
 export interface PredictionResult {
   Predicted_Risk: string;
