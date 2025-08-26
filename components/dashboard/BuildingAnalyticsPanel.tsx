@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { Svg, Line, Circle, Rect, Text as SvgText } from 'react-native-svg';
-import { Filter, BarChart3, PieChart, TrendingUp, Building } from 'lucide-react-native';
+import { Filter, ChartBar as BarChart3, ChartPie as PieChart, TrendingUp, Building } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
