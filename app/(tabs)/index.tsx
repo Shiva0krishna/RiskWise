@@ -12,6 +12,8 @@ import { IoTSensorPanel } from '@/components/dashboard/IoTSensorPanel';
 import { ProjectKPIPanel } from '@/components/dashboard/ProjectKPIPanel';
 import { RiskTimelinePanel } from '@/components/dashboard/RiskTimelinePanel';
 import { ActionRecommendationPanel } from '@/components/dashboard/ActionRecommendationPanel';
+import { BuildingAnalyticsPanel } from '@/components/dashboard/BuildingAnalyticsPanel';
+import { DataCollectionWizard } from '@/components/onboarding/DataCollectionWizard';
 
 interface Project {
   id: string;
@@ -36,6 +38,8 @@ interface DashboardData {
 export default function DashboardScreen() {
   const { user } = useAuth();
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [showWizard, setShowWizard] = useState(false);
   const [dashboardData, setDashboardData] = useState<DashboardData>({
     currentRisk: 'Low',
     confidence: 0.75,
@@ -60,6 +64,11 @@ export default function DashboardScreen() {
   });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Check if user has projects on mount
+  useEffect(() => {
+    checkUserProjects();
+  }, [user]);
 
   // Set up real-time subscription for dashboard updates
   useEffect(() => {
@@ -104,6 +113,32 @@ export default function DashboardScreen() {
     }
   }, [selectedProject]);
 
+  const checkUserProjects = async () => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false });
+
+      if (error) throw error;
+
+      setProjects(data || []);
+      
+      if (!data || data.length === 0) {
+        setShowWizard(true);
+      } else {
+        setSelectedProject(data[0]);
+      }
+    } catch (error) {
+      console.error('Error checking projects:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const loadDashboardData = async () => {
     if (!selectedProject || !user) return;
 
@@ -143,7 +178,7 @@ export default function DashboardScreen() {
     let currentRisk: 'Low' | 'Medium' | 'High' = 'Low';
     let confidence = 0.75;
 
-    if (latestPrediction && latestPrediction.results && latestPrediction.results.length > 0) {
+    if (latestPrediction && latestPrediction.results && Array.isArray(latestPrediction.results) && latestPrediction.results.length > 0) {
       const result = latestPrediction.results[0];
       currentRisk = result.Predicted_Risk || 'Low';
       confidence = Math.max(
@@ -162,12 +197,12 @@ export default function DashboardScreen() {
     // Generate timeline from predictions
     const timelineData = predictions.slice(0, 10).reverse().map(p => ({
       date: p.created_at,
-      riskLevel: p.results?.[0]?.Predicted_Risk || 'Low',
-      confidence: Math.max(
-        p.results?.[0]?.proba_High || 0,
-        p.results?.[0]?.proba_Medium || 0,
-        p.results?.[0]?.proba_Low || 0
-      ),
+      riskLevel: (Array.isArray(p.results) && p.results.length > 0) ? p.results[0]?.Predicted_Risk || 'Low' : 'Low',
+      confidence: (Array.isArray(p.results) && p.results.length > 0) ? Math.max(
+        p.results[0]?.proba_High || 0,
+        p.results[0]?.proba_Medium || 0,
+        p.results[0]?.proba_Low || 0
+      ) : 0.5,
     }));
 
     // Generate AI recommendations using Gemini
@@ -313,7 +348,7 @@ export default function DashboardScreen() {
   const generateAIRecommendations = async (
     riskLevel: string,
     riskDrivers: any[],
-    project: Project,
+    project: Project | null,
     buildingData: any[]
   ) => {
     try {
@@ -329,7 +364,7 @@ export default function DashboardScreen() {
         title: `AI Recommendation ${index + 1}`,
         description: rec,
         priority: riskLevel === 'High' ? 'high' : riskLevel === 'Medium' ? 'medium' : 'low',
-        category: 'schedule',
+        category: index % 4 === 0 ? 'schedule' : index % 4 === 1 ? 'cost' : index % 4 === 2 ? 'safety' : 'quality',
         action: rec,
       }));
     } catch (error) {
@@ -404,6 +439,15 @@ export default function DashboardScreen() {
     setRefreshing(true);
     loadDashboardData();
   };
+
+  const handleWizardComplete = () => {
+    setShowWizard(false);
+    checkUserProjects();
+  };
+
+  if (showWizard) {
+    return <DataCollectionWizard onComplete={handleWizardComplete} />;
+  }
 
   if (!selectedProject) {
     return (
@@ -487,6 +531,9 @@ export default function DashboardScreen() {
         <RiskDriversPanel drivers={dashboardData.riskDrivers} />
 
         {/* Building Analytics */}
+        <BuildingAnalyticsPanel selectedProjectId={selectedProject.id} />
+
+        {/* IoT Sensor Monitoring */}
         <IoTSensorPanel selectedProjectId={selectedProject.id} />
 
         {/* Project KPIs */}

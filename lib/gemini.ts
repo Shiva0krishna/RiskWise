@@ -28,6 +28,11 @@ export class GeminiService {
     projectData: any,
     sensorData?: any
   ): Promise<string[]> {
+    if (!this.apiKey) {
+      console.warn('Gemini API key not configured, using fallback recommendations');
+      return this.getFallbackRecommendations(riskLevel, riskDrivers);
+    }
+
     try {
       const context = this.buildContext(riskLevel, riskDrivers, projectData, sensorData);
       
@@ -85,13 +90,13 @@ Return only the recommendations as a numbered list, nothing else.`
     projectData: any,
     sensorData?: any
   ): string {
-    let context = `Project: ${projectData.name}\n`;
-    context += `Location: ${projectData.city}\n`;
-    context += `Structural System: ${projectData.structural_system}\n`;
-    context += `Progress: ${projectData.progress_percent}%\n`;
+    let context = `Project: ${projectData?.name || 'Unknown'}\n`;
+    context += `Location: ${projectData?.city || 'Unknown'}\n`;
+    context += `Structural System: ${projectData?.structural_system || 'Unknown'}\n`;
+    context += `Progress: ${projectData?.progress_percent || 0}%\n`;
     context += `Current Risk Level: ${riskLevel}\n\n`;
 
-    if (riskDrivers.length > 0) {
+    if (riskDrivers && riskDrivers.length > 0) {
       context += 'Key Risk Drivers:\n';
       riskDrivers.forEach(driver => {
         context += `- ${driver.factor}: ${driver.value} (threshold: ${driver.threshold}, status: ${driver.status})\n`;
@@ -117,24 +122,26 @@ Return only the recommendations as a numbered list, nothing else.`
       recommendations.push('Conduct emergency project review with all stakeholders');
     }
 
-    riskDrivers.forEach(driver => {
-      if (driver.status === 'critical') {
-        switch (driver.factor) {
-          case 'Delay Index':
-            recommendations.push('Reallocate resources to critical path activities to reduce project delays');
-            break;
-          case 'Cost Overrun %':
-            recommendations.push('Review budget allocation and implement strict cost control measures');
-            break;
-          case 'Safety Incident Count':
-            recommendations.push('Conduct immediate safety audit and reinforce safety protocols');
-            break;
-          case 'Structural Risk Index':
-            recommendations.push('Schedule structural engineering review and inspection');
-            break;
+    if (riskDrivers && Array.isArray(riskDrivers)) {
+      riskDrivers.forEach(driver => {
+        if (driver.status === 'critical') {
+          switch (driver.factor) {
+            case 'Delay Index':
+              recommendations.push('Reallocate resources to critical path activities to reduce project delays');
+              break;
+            case 'Cost Overrun %':
+              recommendations.push('Review budget allocation and implement strict cost control measures');
+              break;
+            case 'Safety Incident Count':
+              recommendations.push('Conduct immediate safety audit and reinforce safety protocols');
+              break;
+            case 'Structural Risk Index':
+              recommendations.push('Schedule structural engineering review and inspection');
+              break;
+          }
         }
-      }
-    });
+      });
+    }
 
     if (recommendations.length === 0) {
       recommendations.push('Continue monitoring current project parameters');

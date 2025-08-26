@@ -13,9 +13,6 @@ import {
   FileText,
   Database,
   MessageSquare,
-  TriangleAlert as AlertTriangle,
-  TrendingUp,
-  CircleCheck as CheckCircle,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { ApiService } from '@/lib/api';
@@ -58,32 +55,6 @@ export default function PredictScreen() {
     { id: 'text', title: 'Text Input', icon: MessageSquare },
   ];
 
-  const getRiskColor = (risk: string) => {
-    switch (risk) {
-      case 'High':
-        return '#EF4444';
-      case 'Medium':
-        return '#F59E0B';
-      case 'Low':
-        return '#10B981';
-      default:
-        return '#6B7280';
-    }
-  };
-
-  const getRiskIcon = (risk: string) => {
-    switch (risk) {
-      case 'High':
-        return AlertTriangle;
-      case 'Medium':
-        return TrendingUp;
-      case 'Low':
-        return CheckCircle;
-      default:
-        return CheckCircle;
-    }
-  };
-
   const handlePredictionComplete = (results: PredictionResult[]) => {
     setPredictionResults(results);
   };
@@ -97,6 +68,9 @@ export default function PredictScreen() {
     setLoading(true);
     try {
       const predictions = await ApiService.predictFromText(inputText);
+      
+      // Show results immediately
+      setPredictionResults(predictions);
       
       // Save to database if user wants to save to project
       if (saveToProject && user) {
@@ -123,13 +97,17 @@ export default function PredictScreen() {
           input_data: { interactive_text: inputText },
           results: predictions,
           project_id: null,
+          risk_level: predictions.length > 0 ? predictions[0].Predicted_Risk : null,
+          confidence: predictions.length > 0 ? Math.max(
+            predictions[0].proba_High || 0,
+            predictions[0].proba_Medium || 0,
+            predictions[0].proba_Low || 0
+          ) : null,
         });
 
         if (error) throw error;
       }
 
-      setPredictionResults(predictions);
-      
       if (!saveToProject) {
         Alert.alert('Prediction Complete', 'Results generated (not saved to project)');
       }
@@ -172,6 +150,7 @@ export default function PredictScreen() {
           thumbColor={saveToProject ? '#3B82F6' : '#6B7280'}
         />
       </View>
+
       {/* Tab Navigation */}
       <View style={styles.tabContainer}>
         {tabs.map((tab) => (
@@ -229,7 +208,9 @@ export default function PredictScreen() {
 
         {/* Results directly below input */}
         {predictionResults.length > 0 && (
-          <PredictionResults results={predictionResults} />
+          <View style={styles.resultsContainer}>
+            <PredictionResults results={predictionResults} />
+          </View>
         )}
       </View>
     </ScrollView>
@@ -237,15 +218,25 @@ export default function PredictScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F9FAFB' },
-  header: { paddingTop: 60, paddingHorizontal: 24, paddingBottom: 24 },
+  container: { 
+    flex: 1, 
+    backgroundColor: '#F9FAFB' 
+  },
+  header: { 
+    paddingTop: 60, 
+    paddingHorizontal: 24, 
+    paddingBottom: 24 
+  },
   title: {
     fontSize: 32,
     fontWeight: '700',
     color: '#111827',
     marginBottom: 8,
   },
-  subtitle: { fontSize: 16, color: '#6B7280' },
+  subtitle: { 
+    fontSize: 16, 
+    color: '#6B7280' 
+  },
   tabContainer: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
@@ -269,10 +260,22 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     gap: 8,
   },
-  activeTab: { backgroundColor: '#EBF8FF' },
-  tabText: { fontSize: 14, fontWeight: '500', color: '#6B7280' },
-  activeTabText: { color: '#3B82F6', fontWeight: '600' },
-  content: { flex: 1, paddingHorizontal: 24 },
+  activeTab: { 
+    backgroundColor: '#EBF8FF' 
+  },
+  tabText: { 
+    fontSize: 14, 
+    fontWeight: '500', 
+    color: '#6B7280' 
+  },
+  activeTabText: { 
+    color: '#3B82F6', 
+    fontWeight: '600' 
+  },
+  content: { 
+    flex: 1, 
+    paddingHorizontal: 24 
+  },
   saveToggleContainer: {
     backgroundColor: '#FFFFFF',
     marginHorizontal: 24,
@@ -302,7 +305,9 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     lineHeight: 20,
   },
-  textInputContainer: { marginBottom: 20 },
+  textInputContainer: { 
+    marginBottom: 20 
+  },
   textInputTitle: {
     fontSize: 18,
     fontWeight: '600',
@@ -326,5 +331,8 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
     fontSize: 16,
     lineHeight: 24,
+  },
+  resultsContainer: {
+    marginTop: 24,
   },
 });

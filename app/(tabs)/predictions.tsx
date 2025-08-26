@@ -18,6 +18,8 @@ interface Prediction {
   results: any[];
   file_name: string | null;
   created_at: string;
+  risk_level: string | null;
+  confidence: number | null;
 }
 
 export default function PredictionsScreen() {
@@ -136,7 +138,7 @@ export default function PredictionsScreen() {
             <View style={styles.resultsSummary}>
               <Text style={styles.summaryTitle}>Risk Summary</Text>
               <View style={styles.riskCounts}>
-                {Object.entries(calculateRiskSummary(selectedPrediction.results)).map(([risk, count]) => (
+                {Object.entries(calculateRiskSummary(selectedPrediction.results || [])).map(([risk, count]) => (
                   <View key={risk} style={styles.riskCount}>
                     <View style={[styles.riskDot, { backgroundColor: getRiskColor(risk) }]} />
                     <Text style={styles.riskCountText}>{risk}: {count}</Text>
@@ -225,7 +227,7 @@ export default function PredictionsScreen() {
           <View style={styles.predictionsContainer}>
             {predictions.map((prediction) => {
               const TypeIcon = getTypeIcon(prediction.prediction_type);
-              const riskSummary = calculateRiskSummary(prediction.results);
+              const riskSummary = calculateRiskSummary(prediction.results || []);
               const totalResults = Array.isArray(prediction.results) ? prediction.results.length : 0;
 
               return (

@@ -13,7 +13,6 @@ import { Button } from '@/components/ui/Button';
 import { ApiService } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { PredictionResults } from '@/components/prediction/PredictionResults';
 
 interface Project {
   id: string;
@@ -55,7 +54,6 @@ interface BuildingDataFormProps {
 export function BuildingDataForm({ onPredictionComplete, selectedProject, saveToProject = true }: BuildingDataFormProps) {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [predictionResults, setPredictionResults] = useState<any[]>([]);
   const [formData, setFormData] = useState<Partial<BuildingData>>({
     Building_ID: '',
     City: '',
@@ -65,7 +63,7 @@ export function BuildingDataForm({ onPredictionComplete, selectedProject, saveTo
   });
 
   const materials = ['Concrete', 'Steel', 'Wood', 'Masonry', 'Composite'];
-  const structuralSystems = ['Frame', 'Shear Wall', 'Truss', 'Arch', 'Shell'];
+  const structuralSystems = ['Frame', 'Shear Wall', 'Truss', 'Arch', 'Shell', 'Mega-Frame'];
 
   const handleInputChange = (field: keyof BuildingData, value: string | number) => {
     setFormData(prev => ({
@@ -98,7 +96,6 @@ export function BuildingDataForm({ onPredictionComplete, selectedProject, saveTo
       const predictions = await ApiService.predictFromJson(formData);
 
       // Show results immediately
-      setPredictionResults(predictions);
       onPredictionComplete(predictions);
 
       // Save to database if user wants to save to project
@@ -157,6 +154,25 @@ export function BuildingDataForm({ onPredictionComplete, selectedProject, saveTo
           });
 
         if (predictionError) throw predictionError;
+      } else if (user) {
+        // Save prediction without project association
+        const { error: predictionError } = await supabase
+          .from('predictions')
+          .insert({
+            user_id: user.id,
+            prediction_type: 'json',
+            input_data: formData,
+            results: predictions,
+            project_id: null,
+            risk_level: predictions.length > 0 ? predictions[0].Predicted_Risk : null,
+            confidence: predictions.length > 0 ? Math.max(
+              predictions[0].proba_High || 0,
+              predictions[0].proba_Medium || 0,
+              predictions[0].proba_Low || 0
+            ) : null,
+          });
+
+        if (predictionError) throw predictionError;
       }
 
       if (!saveToProject) {
@@ -179,11 +195,11 @@ export function BuildingDataForm({ onPredictionComplete, selectedProject, saveTo
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <View style={styles.container}>
       <Text style={styles.title}>Building Risk Assessment</Text>
       <Text style={styles.subtitle}>Enter building details for risk prediction</Text>
 
-      <View style={styles.form}>
+      <ScrollView style={styles.form} showsVerticalScrollIndicator={false}>
         <Input
           label="Building ID"
           value={formData.Building_ID || ''}
@@ -383,15 +399,8 @@ export function BuildingDataForm({ onPredictionComplete, selectedProject, saveTo
           loading={loading}
           style={styles.submitButton}
         />
-
-        {/* Show results immediately below form */}
-        {predictionResults.length > 0 && (
-          <View style={styles.resultsSection}>
-            <PredictionResults results={predictionResults} />
-          </View>
-        )}
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -414,7 +423,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   form: {
-    padding: 24,
+    flex: 1,
   },
   pickerContainer: {
     marginBottom: 16,
@@ -434,12 +443,7 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     marginTop: 24,
+    marginBottom: 40,
     backgroundColor: '#3B82F6',
-  },
-  resultsSection: {
-    marginTop: 32,
-    paddingTop: 24,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
   },
 });
