@@ -108,6 +108,17 @@ export default function PredictScreen() {
         });
 
         if (error) throw error;
+      } else if (user) {
+        // Save without project association
+        const { error } = await supabase.from('predictions').insert({
+          user_id: user.id,
+          prediction_type: 'text',
+          input_data: { interactive_text: inputText },
+          results: predictions,
+          project_id: null,
+        });
+
+        if (error) throw error;
       }
 
       setPredictionResults(predictions);
