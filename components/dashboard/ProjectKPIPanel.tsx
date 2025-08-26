@@ -29,7 +29,7 @@ export function ProjectKPIPanel({ kpiData }: ProjectKPIPanelProps) {
     
     const max = Math.max(...data);
     const min = Math.min(...data);
-    const range = max - min || 1;
+    const range = max - min || 0.1;
     
     const points = data.map((value, index) => {
       const x = (index / (data.length - 1)) * width;
@@ -39,6 +39,14 @@ export function ProjectKPIPanel({ kpiData }: ProjectKPIPanelProps) {
 
     return (
       <Svg width={width} height={height}>
+        <Line
+          x1="0"
+          y1={height}
+          x2={width}
+          y2={height}
+          stroke="#E5E7EB"
+          strokeWidth="1"
+        />
         <polyline
           points={points}
           fill="none"
@@ -65,16 +73,26 @@ export function ProjectKPIPanel({ kpiData }: ProjectKPIPanelProps) {
   const renderBarChart = (data: number[], width: number, height: number) => {
     if (data.length === 0) return null;
     
-    const max = Math.max(...data) || 1;
+    const max = Math.max(...data, kpiData.cost.baseline) || 1;
     const barWidth = width / data.length - 2;
     
     return (
       <Svg width={width} height={height}>
+        {/* Baseline line */}
+        <Line
+          x1="0"
+          y1={height - (kpiData.cost.baseline / max) * height}
+          x2={width}
+          y2={height - (kpiData.cost.baseline / max) * height}
+          stroke="#6B7280"
+          strokeWidth="1"
+          strokeDasharray="4,4"
+        />
         {data.map((value, index) => {
           const barHeight = (value / max) * height;
           const x = index * (barWidth + 2);
           const y = height - barHeight;
-          const color = value > kpiData.cost.baseline ? '#EF4444' : '#10B981';
+          const color = value > (kpiData.cost.baseline || 10) ? '#EF4444' : '#10B981';
           
           return (
             <Rect
