@@ -1,226 +1,418 @@
-// components/BuildingDataForm.tsx
-import React, { useState } from "react";
-import { ScrollView, View, Text, TextInput, TouchableOpacity } from "react-native";
-import { supabase } from "@/lib/supabase";
-import { Picker } from "@react-native-picker/picker";
-import { GeminiService } from "@/lib/GeminiService";
+// components/IoTSensorPanel.tsx
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
+import { Svg, Line, Circle, Path } from 'react-native-svg';
+import { Activity, AlertTriangle, Gauge, TrendingUp } from 'lucide-react-native';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
+import { Picker } from '@react-native-picker/picker';
 
-type Section = "general" | "dimensions" | "risks" | "environment" | "operations";
+interface SensorData {
+  vibration: {
+    current: number;
+    threshold: number;
+    trend: number[];
+    status: 'normal' | 'warning' | 'critical';
+  };
+  craneAlerts: {
+    count: number;
+    weeklyTrend: number[];
+    status: 'normal' | 'warning' | 'critical';
+  };
+  tilt: {
+    current: number;
+    threshold: number;
+    status: 'normal' | 'warning' | 'critical';
+  };
+  temperature: {
+    current: number;
+    humidity: number;
+  };
+}
 
-export default function BuildingDataForm() {
-  const [activeSection, setActiveSection] = useState<Section>("general");
-  const [form, setForm] = useState<any>({
-    building_id: "",
-    city: "",
-    comparable_project: "",
-    floors: "",
-    height_m: "",
-    total_area_m2: "",
-    material: "",
-    structural_system: "",
-    structural_risk_index: "",
-    facade_complexity_index: "",
-    project_duration_days: "",
-    delay_index: "",
-    cost_overrun_percent: "",
-    safety_incident_count: "",
-    resource_allocation_efficiency: "",
-    max_vibration_mm_s: "",
-    avg_tilt_deg: "",
-    avg_temperature_c: "",
-    humidity_percent: "",
-    equipment_usage_rate_percent: "",
-    crane_alerts_count: "",
-    cobie_assets: "",
-    cobie_systems: "",
-    risk_level: "",
+interface IoTSensorPanelProps {
+  selectedProjectId?: string | null;
+}
+
+type FilterFields = 'city' | 'material' | 'structural_system' | 'risk_level';
+
+export function IoTSensorPanel({ selectedProjectId }: IoTSensorPanelProps) {
+  const { user } = useAuth();
+  const [sensorData, setSensorData] = useState<SensorData>({
+    vibration: { current: 0, threshold: 5.0, trend: [], status: 'normal' },
+    craneAlerts: { count: 0, weeklyTrend: [], status: 'normal' },
+    tilt: { current: 0, threshold: 0.5, status: 'normal' },
+    temperature: { current: 0, humidity: 0 },
   });
+  const [loading, setLoading] = useState(true);
 
-  const [saving, setSaving] = useState(false);
-  const [recommendations, setRecommendations] = useState<string[]>([]);
+  // minimal filters
+  const [availableFilterValues, setAvailableFilterValues] = useState<Record<FilterFields, string[]>>({
+    city: [],
+    material: [],
+    structural_system: [],
+    risk_level: [],
+  });
+  const [selectedFilters, setSelectedFilters] = useState<Partial<Record<FilterFields, string>>>({});
+  const [isApplyingFilters, setIsApplyingFilters] = useState(false);
 
-  const handleChange = (field: string, value: any) => {
-    setForm({ ...form, [field]: value });
-  };
+  const BUILDING_RISK_TABLE = 'building_risk';
+  const BUILDING_DATA_TABLE = 'building_data';
 
-  const handleSave = async () => {
-    setSaving(true);
+  /* -------------------------
+     Initial load + filters
+     ------------------------- */
+  useEffect(() => {
+    fetchFilterOptions();
+    loadSensorData();
 
-    // Insert into Supabase
-    const { error } = await supabase.from("general_dataset").insert([form]);
+    // Subscribe for live updates
+    const channel = supabase
+      .channel('building_data_changes')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: BUILDING_DATA_TABLE }, (payload) => {
+        if (payload.new) {
+          handleNewSensorRow(payload.new);
+        }
+      })
+      .subscribe();
 
-    if (error) {
-      console.error("Error saving data:", error);
-      alert("Error saving data");
-    } else {
-      alert("Building data saved!");
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedProjectId, user]);
+
+  const fetchFilterOptions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from(BUILDING_RISK_TABLE)
+        .select('city, material, structural_system, risk_level');
+
+      if (error) return;
+      if (!data) return;
+
+      const unique = (arr: any[]) => Array.from(new Set(arr.filter(Boolean)));
+
+      setAvailableFilterValues({
+        city: unique(data.map((r: any) => r.city)),
+        material: unique(data.map((r: any) => r.material)),
+        structural_system: unique(data.map((r: any) => r.structural_system)),
+        risk_level: unique(data.map((r: any) => r.risk_level)),
+      });
+    } catch (err) {
+      console.error('fetchFilterOptions err', err);
     }
-    setSaving(false);
   };
 
-  const handleRecommendations = async () => {
-    const recs = await GeminiService.generateRecommendations(
-      form.risk_level || "Medium",
-      [
-        { factor: "Delay Index", value: form.delay_index, threshold: 0.25, status: "normal" },
-        { factor: "Cost Overrun %", value: form.cost_overrun_percent, threshold: 10, status: "normal" },
-      ],
-      { name: form.building_id, city: form.city, structural_system: form.structural_system, progress_percent: 50 }
+  const fetchBuildingIdsMatchingFilters = async (filters: Partial<Record<FilterFields, string>>) => {
+    try {
+      let query = supabase.from(BUILDING_RISK_TABLE).select('building_id');
+
+      if (filters.city) query = query.eq('city', filters.city);
+      if (filters.material) query = query.eq('material', filters.material);
+      if (filters.structural_system) query = query.eq('structural_system', filters.structural_system);
+      if (filters.risk_level) query = query.eq('risk_level', filters.risk_level);
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data || []).map((r: any) => r.building_id).filter(Boolean);
+    } catch {
+      return [];
+    }
+  };
+
+  const loadSensorData = async () => {
+    if (!user) return;
+    setLoading(true);
+
+    try {
+      const hasAnyFilter = Object.keys(selectedFilters).length > 0;
+      let buildingIds: string[] | null = null;
+
+      if (hasAnyFilter) {
+        buildingIds = await fetchBuildingIdsMatchingFilters(selectedFilters as any);
+      }
+
+      let query = supabase
+        .from(BUILDING_DATA_TABLE)
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (selectedProjectId) query = query.eq('project_id', selectedProjectId);
+
+      if (hasAnyFilter && buildingIds && buildingIds.length > 0) {
+        query = supabase
+          .from(BUILDING_DATA_TABLE)
+          .select('*')
+          .in('building_id', buildingIds)
+          .order('created_at', { ascending: false })
+          .limit(50);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        setSensorData(processSensorData(data));
+      }
+    } catch (error) {
+      console.error('Error loading sensor data:', error);
+    } finally {
+      setLoading(false);
+      setIsApplyingFilters(false);
+    }
+  };
+
+  const handleNewSensorRow = (row: any) => {
+    // merge with current trends
+    setSensorData((prev) => {
+      const newTrend = [...prev.vibration.trend.slice(-6), row.max_vibration_mm_s || 0];
+      const newCraneTrend = [...prev.craneAlerts.weeklyTrend.slice(-6), row.crane_alerts_count || 0];
+      return {
+        vibration: {
+          current: row.max_vibration_mm_s || 0,
+          threshold: 5.0,
+          trend: newTrend,
+          status: row.max_vibration_mm_s > 5 ? 'critical' : row.max_vibration_mm_s > 3 ? 'warning' : 'normal',
+        },
+        craneAlerts: {
+          count: row.crane_alerts_count || 0,
+          weeklyTrend: newCraneTrend,
+          status: row.crane_alerts_count > 5 ? 'critical' : row.crane_alerts_count > 2 ? 'warning' : 'normal',
+        },
+        tilt: {
+          current: row.avg_tilt_deg || 0,
+          threshold: 0.5,
+          status: row.avg_tilt_deg > 0.5 ? 'critical' : row.avg_tilt_deg > 0.3 ? 'warning' : 'normal',
+        },
+        temperature: {
+          current: row.avg_temperature_c || 20,
+          humidity: row.humidity_percent || 50,
+        },
+      };
+    });
+  };
+
+  const processSensorData = (buildingData: any[]): SensorData => {
+    const latest = buildingData[0];
+    const vibrationTrend = buildingData.slice(0, 7).map(d => d.max_vibration_mm_s || 0).reverse();
+    const craneAlertsTrend = buildingData.slice(0, 7).map(d => d.crane_alerts_count || 0).reverse();
+
+    return {
+      vibration: {
+        current: latest.max_vibration_mm_s || 0,
+        threshold: 5.0,
+        trend: vibrationTrend,
+        status: latest.max_vibration_mm_s > 5.0 ? 'critical' : latest.max_vibration_mm_s > 3.0 ? 'warning' : 'normal',
+      },
+      craneAlerts: {
+        count: latest.crane_alerts_count || 0,
+        weeklyTrend: craneAlertsTrend,
+        status: latest.crane_alerts_count > 5 ? 'critical' : latest.crane_alerts_count > 2 ? 'warning' : 'normal',
+      },
+      tilt: {
+        current: latest.avg_tilt_deg || 0,
+        threshold: 0.5,
+        status: latest.avg_tilt_deg > 0.5 ? 'critical' : latest.avg_tilt_deg > 0.3 ? 'warning' : 'normal',
+      },
+      temperature: {
+        current: latest.avg_temperature_c || 20,
+        humidity: latest.humidity_percent || 50,
+      },
+    };
+  };
+
+  /* -------------------------
+     Rendering helpers
+     ------------------------- */
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'critical': return '#EF4444';
+      case 'warning': return '#F59E0B';
+      case 'normal': return '#10B981';
+      default: return '#6B7280';
+    }
+  };
+
+  const renderLineChart = (data: number[], width: number, height: number, color: string, threshold?: number) => {
+    if (!data || data.length < 2) return null;
+
+    const max = Math.max(...data, threshold || 0);
+    const min = Math.min(...data, 0);
+    const range = max - min || 0.1;
+
+    return (
+      <Svg width={width} height={height}>
+        {threshold !== undefined && (
+          <Line
+            x1="0"
+            y1={height - ((threshold - min) / range) * height}
+            x2={width}
+            y2={height - ((threshold - min) / range) * height}
+            stroke="#EF4444"
+            strokeWidth="1"
+            strokeDasharray="4,4"
+          />
+        )}
+        {data.map((value, index) => {
+          if (index === 0) return null;
+          const prevValue = data[index - 1];
+          const x1 = ((index - 1) / (data.length - 1)) * width;
+          const y1 = height - ((prevValue - min) / range) * height;
+          const x2 = (index / (data.length - 1)) * width;
+          const y2 = height - ((value - min) / range) * height;
+          return <Line key={index} x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth="2" />;
+        })}
+        {data.map((value, index) => {
+          const x = (index / (data.length - 1)) * width;
+          const y = height - ((value - min) / range) * height;
+          return <Circle key={index} cx={x} cy={y} r="3" fill={color} />;
+        })}
+      </Svg>
     );
-    setRecommendations(recs);
   };
 
-  const renderInput = (label: string, field: string, type: "text" | "number" = "text") => (
-    <View className="mb-4">
-      <Text className="text-base font-medium mb-1">{label}</Text>
-      <TextInput
-        value={form[field]}
-        onChangeText={(text) => handleChange(field, type === "number" ? Number(text) : text)}
-        keyboardType={type === "number" ? "numeric" : "default"}
-        placeholder={label}
-        className="border border-gray-300 rounded-xl p-3"
-      />
-    </View>
-  );
+  const renderTiltGauge = (current: number, threshold: number) => {
+    const percentage = Math.min((current / threshold) * 50, 100);
+    const color = getStatusColor(sensorData.tilt.status);
+    return (
+      <Svg width="80" height="80" viewBox="0 0 80 80">
+        <Path d="M 15 65 A 25 25 0 0 1 65 65" stroke="#E5E7EB" strokeWidth="6" fill="none" />
+        <Path
+          d={`M 15 65 A 25 25 0 0 ${percentage > 50 ? 1 : 0} ${15 + (percentage / 100) * 50} ${65 - (percentage / 100) * 25}`}
+          stroke={color}
+          strokeWidth="6"
+          fill="none"
+        />
+        <Circle cx="40" cy="65" r="3" fill="#374151" />
+      </Svg>
+    );
+  };
 
-  const renderDropdown = (label: string, field: string, options: string[]) => (
-    <View className="mb-4">
-      <Text className="text-base font-medium mb-1">{label}</Text>
-      <View className="border border-gray-300 rounded-xl">
-        <Picker selectedValue={form[field]} onValueChange={(value) => handleChange(field, value)}>
-          <Picker.Item label={`Select ${label}`} value="" />
-          {options.map((opt) => (
-            <Picker.Item key={opt} label={opt} value={opt} />
-          ))}
-        </Picker>
+  /* -------------------------
+     Filters UI
+     ------------------------- */
+  const onSelectFilterValue = (field: FilterFields, value: string) => {
+    setSelectedFilters(prev => {
+      const copy = { ...prev };
+      if (!value) delete copy[field]; else copy[field] = value;
+      return copy;
+    });
+  };
+
+  const applyFilters = async () => {
+    setIsApplyingFilters(true);
+    await loadSensorData();
+  };
+
+  const clearFilters = async () => {
+    setSelectedFilters({});
+    setIsApplyingFilters(true);
+    await loadSensorData();
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>IoT Sensor Monitoring</Text>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#3B82F6" />
+          <Text style={styles.loadingText}>Loading sensor data...</Text>
+        </View>
       </View>
-    </View>
-  );
-
-  const SectionToggle = ({ section, title }: { section: Section; title: string }) => (
-    <TouchableOpacity
-      className={`p-3 rounded-xl mb-2 ${activeSection === section ? "bg-blue-500" : "bg-gray-200"}`}
-      onPress={() => setActiveSection(section)}
-    >
-      <Text className={`text-lg font-semibold ${activeSection === section ? "text-white" : "text-black"}`}>
-        {title}
-      </Text>
-    </TouchableOpacity>
-  );
+    );
+  }
 
   return (
-    <ScrollView className="flex-1 p-4">
-      {/* Section Toggles */}
-      <View className="flex-row flex-wrap gap-2 mb-4">
-        <SectionToggle section="general" title="General Info" />
-        <SectionToggle section="dimensions" title="Dimensions" />
-        <SectionToggle section="risks" title="Risk Factors" />
-        <SectionToggle section="environment" title="Environment" />
-        <SectionToggle section="operations" title="Operations" />
+    <ScrollView style={styles.container}>
+      <View style={styles.header}>
+        <Activity color="#3B82F6" size={24} />
+        <View style={styles.headerText}>
+          <Text style={styles.title}>IoT Sensor Monitoring</Text>
+          <Text style={styles.subtitle}>Real-time site sensor data</Text>
+        </View>
+        <View style={styles.liveIndicator}>
+          <View style={styles.liveDot} />
+          <Text style={styles.liveText}>LIVE</Text>
+        </View>
       </View>
 
-      {/* General Info */}
-      {activeSection === "general" && (
-        <View>
-          {renderInput("Building ID", "building_id")}
-          {renderInput("City", "city")}
-          {renderInput("Comparable Project", "comparable_project")}
-          {renderDropdown("Material", "material", ["Concrete", "Steel", "Composite", "Timber"])}
-          {renderDropdown("Structural System", "structural_system", ["Core & Outrigger", "Shear Wall", "Frame", "Mixed"])}
-          {renderDropdown("Risk Level", "risk_level", ["Low", "Medium", "High"])}
+      {/* Filters */}
+      <View style={styles.filterBar}>
+        {(['city', 'material', 'structural_system', 'risk_level'] as FilterFields[]).map((field) => (
+          <View key={field} style={styles.pickerWrapper}>
+            <Text style={styles.pickerLabel}>{field}</Text>
+            <View style={styles.picker}>
+              <Picker
+                selectedValue={selectedFilters[field] ?? ''}
+                onValueChange={(v) => onSelectFilterValue(field, v)}
+              >
+                <Picker.Item label="All" value="" />
+                {availableFilterValues[field].map((val) => (
+                  <Picker.Item key={val} label={String(val)} value={String(val)} />
+                ))}
+              </Picker>
+            </View>
+          </View>
+        ))}
+        <View style={styles.filterButtonsRow}>
+          <TouchableOpacity style={styles.applyButton} onPress={applyFilters} disabled={isApplyingFilters}>
+            <Text style={styles.applyButtonText}>{isApplyingFilters ? 'Applying...' : 'Apply'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.clearButton} onPress={clearFilters}>
+            <Text style={styles.clearButtonText}>Clear</Text>
+          </TouchableOpacity>
         </View>
-      )}
+      </View>
 
-      {/* Dimensions */}
-      {activeSection === "dimensions" && (
-        <View>
-          {renderInput("Floors", "floors", "number")}
-          {renderInput("Height (m)", "height_m", "number")}
-          {renderInput("Total Area (m²)", "total_area_m2", "number")}
+      {/* Sensors */}
+      <View style={styles.sensorsGrid}>
+        {/* Vibration */}
+        <View style={styles.sensorCard}>
+          <Text style={styles.sensorTitle}>Vibration</Text>
+          <Text style={[styles.sensorValue, { color: getStatusColor(sensorData.vibration.status) }]}>
+            {sensorData.vibration.current.toFixed(1)} mm/s
+          </Text>
+          {renderLineChart(sensorData.vibration.trend, 140, 50, getStatusColor(sensorData.vibration.status), sensorData.vibration.threshold)}
         </View>
-      )}
 
-      {/* Risk Factors */}
-      {activeSection === "risks" && (
-        <View>
-          {renderInput("Structural Risk Index", "structural_risk_index", "number")}
-          {renderInput("Facade Complexity Index", "facade_complexity_index", "number")}
-          {renderInput("Project Duration (days)", "project_duration_days", "number")}
-          {renderInput("Delay Index", "delay_index", "number")}
-          {renderInput("Cost Overrun %", "cost_overrun_percent", "number")}
-          {renderInput("Safety Incident Count", "safety_incident_count", "number")}
-          {renderInput("Resource Allocation Efficiency", "resource_allocation_efficiency", "number")}
+        {/* Crane Alerts */}
+        <View style={styles.sensorCard}>
+          <Text style={styles.sensorTitle}>Crane Alerts</Text>
+          <Text style={[styles.sensorValue, { color: getStatusColor(sensorData.craneAlerts.status) }]}>
+            {sensorData.craneAlerts.count}
+          </Text>
+          {renderLineChart(sensorData.craneAlerts.weeklyTrend, 140, 50, getStatusColor(sensorData.craneAlerts.status))}
         </View>
-      )}
 
-      {/* Environment */}
-      {activeSection === "environment" && (
-        <View>
-          {renderInput("Max Vibration (mm/s)", "max_vibration_mm_s", "number")}
-          {renderInput("Avg Tilt (°)", "avg_tilt_deg", "number")}
-          {renderInput("Avg Temperature (°C)", "avg_temperature_c", "number")}
-          {renderInput("Humidity %", "humidity_percent", "number")}
+        {/* Tilt */}
+        <View style={styles.sensorCard}>
+          <Text style={styles.sensorTitle}>Tilt</Text>
+          <Text style={[styles.sensorValue, { color: getStatusColor(sensorData.tilt.status) }]}>
+            {sensorData.tilt.current.toFixed(2)}°
+          </Text>
+          {renderTiltGauge(sensorData.tilt.current, sensorData.tilt.threshold)}
         </View>
-      )}
 
-      {/* Operations */}
-      {activeSection === "operations" && (
-        <View>
-          {renderInput("Equipment Usage Rate %", "equipment_usage_rate_percent", "number")}
-          {renderInput("Crane Alerts Count", "crane_alerts_count", "number")}
-          {renderInput("COBie Assets", "cobie_assets", "number")}
-          {renderInput("COBie Systems", "cobie_systems", "number")}
+        {/* Environment */}
+        <View style={styles.sensorCard}>
+          <Text style={styles.sensorTitle}>Environment</Text>
+          <Text style={styles.environmentValue}>{sensorData.temperature.current.toFixed(1)}°C / {sensorData.temperature.humidity.toFixed(1)}%</Text>
         </View>
-      )}
-
-      {/* Save + Recommendations */}
-      <TouchableOpacity
-        className="bg-green-600 rounded-xl p-4 mt-6"
-        onPress={handleSave}
-        disabled={saving}
-      >
-        <Text className="text-white text-center text-lg font-semibold">
-          {saving ? "Saving..." : "Save Building Data"}
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        className="bg-purple-600 rounded-xl p-4 mt-4"
-        onPress={handleRecommendations}
-      >
-        <Text className="text-white text-center text-lg font-semibold">Get AI Recommendations</Text>
-      </TouchableOpacity>
-
-      {recommendations.length > 0 && (
-        <View className="mt-6">
-          <Text className="text-lg font-bold mb-2">AI Recommendations:</Text>
-          {recommendations.map((rec, i) => (
-            <Text key={i} className="mb-1">• {rec}</Text>
-          ))}
-        </View>
-      )}
+      </View>
     </ScrollView>
   );
 }
 
-
 const styles = StyleSheet.create({
-  container: { backgroundColor: '#fff', padding: 16, borderRadius: 12 },
-  title: { fontSize: 18, fontWeight: '700', marginBottom: 12 },
+  container: { backgroundColor: '#FFFFFF', padding: 16, borderRadius: 12, marginBottom: 24 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  headerText: { flex: 1, marginLeft: 12 },
+  title: { fontSize: 18, fontWeight: '700', color: '#111827' },
+  subtitle: { fontSize: 14, color: '#6B7280' },
+  liveIndicator: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#DCFCE7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981', marginRight: 4 },
+  liveText: { fontSize: 10, fontWeight: '600', color: '#10B981' },
   loadingContainer: { alignItems: 'center', paddingVertical: 40 },
   loadingText: { fontSize: 16, color: '#6B7280', marginTop: 8 },
-  filterBar: { backgroundColor: '#F3F4F6', padding: 8, borderRadius: 10, marginBottom: 12 },
-  pickerWrapper: { marginBottom: 8 },
-  pickerLabel: { fontSize: 12, color: '#374151', marginBottom: 4 },
-  picker: { backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB' },
-  filterButtonsRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 8 },
-  applyButton: { backgroundColor: '#2563EB', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, marginRight: 8 },
-  applyButtonText: { color: '#fff', fontWeight: '700' },
-  clearButton: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E5E7EB', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
-  clearButtonText: { color: '#374151', fontWeight: '700' },
-  sensorsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  sensorCard: { flex: 1, minWidth: 160, backgroundColor: '#F8FAFC', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 12 },
-  sensorTitle: { fontSize: 14, fontWeight: '600', marginBottom: 4 },
-  sensorValue: { fontSize: 16, fontWeight: '700' },
-  thresholdText: { fontSize: 12, color: '#6B7280' },
-});
