@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Building, TrendingUp, Shield } from 'lucide-react-native';
+import { Building, TrendingUp, Shield, Target, ChartBar as BarChart3 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { GeminiService } from '@/lib/gemini';
 import { ProjectSelector } from '@/components/dashboard/ProjectSelector';
 import { RiskGauge } from '@/components/dashboard/RiskGauge';
 import { RiskDriversPanel } from '@/components/dashboard/RiskDriversPanel';
-import { IoTSensorPanel } from '@/components/dashboard/IoTSensorPanel';
+import { BuildingAnalyticsPanel } from '@/components/dashboard/BuildingAnalyticsPanel';
 import { ProjectKPIPanel } from '@/components/dashboard/ProjectKPIPanel';
 import { RiskTimelinePanel } from '@/components/dashboard/RiskTimelinePanel';
 import { ActionRecommendationPanel } from '@/components/dashboard/ActionRecommendationPanel';
@@ -27,7 +28,6 @@ interface DashboardData {
   currentRisk: 'Low' | 'Medium' | 'High';
   confidence: number;
   riskDrivers: any[];
-  sensorData: any;
   kpiData: any;
   timelineData: any[];
   recommendations: any[];
@@ -40,33 +40,18 @@ export default function DashboardScreen() {
     currentRisk: 'Low',
     confidence: 0.75,
     riskDrivers: [],
-    sensorData: {
-      vibration: {
-        current: 2.3,
-        threshold: 5.0,
-        trend: [1.8, 2.1, 2.3, 2.7, 2.3, 2.1, 2.3],
-      },
-      craneAlerts: {
-        count: 3,
-        weeklyTrend: [1, 2, 0, 3, 1, 2, 3],
-      },
-      tilt: {
-        current: 0.8,
-        threshold: 2.0,
-      },
-    },
     kpiData: {
       schedule: {
-        delayIndex: [0.1, 0.15, 0.2, 0.25, 0.35, 0.4, 0.35],
-        currentDelay: 0.35,
+        delayIndex: [],
+        currentDelay: 0,
       },
       cost: {
-        overrunPercent: 15.2,
+        overrunPercent: 0,
         baseline: 10.0,
-        trend: [5, 8, 12, 15, 18, 15, 15.2],
+        trend: [],
       },
       efficiency: {
-        current: 78,
+        current: 0,
         target: 85,
       },
     },
@@ -100,13 +85,12 @@ export default function DashboardScreen() {
         .from('building_data')
         .select('*')
         .eq('project_id', selectedProject.id)
-        .order('created_at', { ascending: false })
-        .limit(1);
+        .order('created_at', { ascending: false });
 
       if (buildingError) throw buildingError;
 
       // Process data for dashboard
-      const processedData = processDashboardData(predictions || [], buildingData || []);
+      const processedData = await processDashboardData(predictions || [], buildingData || []);
       setDashboardData(processedData);
     } catch (error) {
       console.error('Error loading dashboard data:', error);
@@ -116,7 +100,7 @@ export default function DashboardScreen() {
     }
   };
 
-  const processDashboardData = (predictions: any[], buildingData: any[]): DashboardData => {
+  const processDashboardData = async (predictions: any[], buildingData: any[]): Promise<DashboardData> => {
     // Get latest prediction for current risk
     const latestPrediction = predictions[0];
     let currentRisk: 'Low' | 'Medium' | 'High' = 'Low';
@@ -133,7 +117,10 @@ export default function DashboardScreen() {
     }
 
     // Generate risk drivers from building data
-    const riskDrivers = buildingData.length > 0 ? generateRiskDrivers(buildingData[0]) : [];
+    const riskDrivers = buildingData.length > 0 ? generateRiskDrivers(buildingData) : [];
+
+    // Generate KPI data from building data
+    const kpiData = generateKPIData(buildingData);
 
     // Generate timeline from predictions
     const timelineData = predictions.slice(0, 10).reverse().map(p => ({
@@ -146,93 +133,192 @@ export default function DashboardScreen() {
       ),
     }));
 
-    // Generate recommendations based on risk drivers
-    const recommendations = generateRecommendations(riskDrivers, currentRisk);
+    // Generate AI recommendations using Gemini
+    const recommendations = await generateAIRecommendations(
+      currentRisk,
+      riskDrivers,
+      selectedProject,
+      buildingData
+    );
 
     return {
       currentRisk,
       confidence,
       riskDrivers,
-      sensorData: dashboardData.sensorData, // Keep mock sensor data
-      kpiData: dashboardData.kpiData, // Keep mock KPI data
+      kpiData,
       timelineData,
       recommendations,
     };
   };
 
-  const generateRiskDrivers = (building: any) => {
+  const generateRiskDrivers = (buildingDataArray: any[]) => {
+    if (buildingDataArray.length === 0) return [];
+    
+    // Calculate averages from all building data entries
+    const avgData = buildingDataArray.reduce((acc, building) => {
+      Object.keys(building).forEach(key => {
+        if (typeof building[key] === 'number') {
+          acc[key] = (acc[key] || 0) + building[key];
+        }
+      });
+      return acc;
+    }, {});
+    
+    // Calculate averages
+    Object.keys(avgData).forEach(key => {
+      avgData[key] = avgData[key] / buildingDataArray.length;
+    });
+    
     const drivers = [];
     
-    if (building.delay_index !== null) {
+    if (avgData.delay_index !== undefined) {
       drivers.push({
         factor: 'Delay Index',
-        value: building.delay_index,
+        value: avgData.delay_index,
         threshold: 0.3,
-        importance: Math.min(building.delay_index / 0.3, 1),
-        status: building.delay_index > 0.3 ? 'critical' : building.delay_index > 0.2 ? 'warning' : 'normal',
+        importance: Math.min(avgData.delay_index / 0.3, 1),
+        status: avgData.delay_index > 0.3 ? 'critical' : avgData.delay_index > 0.2 ? 'warning' : 'normal',
       });
     }
 
-    if (building.cost_overrun_percent !== null) {
+    if (avgData.cost_overrun_percent !== undefined) {
       drivers.push({
         factor: 'Cost Overrun %',
-        value: building.cost_overrun_percent,
+        value: avgData.cost_overrun_percent,
         threshold: 10,
-        importance: Math.min(building.cost_overrun_percent / 20, 1),
-        status: building.cost_overrun_percent > 15 ? 'critical' : building.cost_overrun_percent > 10 ? 'warning' : 'normal',
+        importance: Math.min(avgData.cost_overrun_percent / 20, 1),
+        status: avgData.cost_overrun_percent > 15 ? 'critical' : avgData.cost_overrun_percent > 10 ? 'warning' : 'normal',
       });
     }
 
-    if (building.safety_incident_count !== null) {
+    if (avgData.safety_incident_count !== undefined) {
       drivers.push({
         factor: 'Safety Incidents',
-        value: building.safety_incident_count,
+        value: avgData.safety_incident_count,
         threshold: 2,
-        importance: Math.min(building.safety_incident_count / 5, 1),
-        status: building.safety_incident_count > 3 ? 'critical' : building.safety_incident_count > 1 ? 'warning' : 'normal',
+        importance: Math.min(avgData.safety_incident_count / 5, 1),
+        status: avgData.safety_incident_count > 3 ? 'critical' : avgData.safety_incident_count > 1 ? 'warning' : 'normal',
       });
     }
 
-    if (building.structural_risk_index !== null) {
+    if (avgData.structural_risk_index !== undefined) {
       drivers.push({
         factor: 'Structural Risk Index',
-        value: building.structural_risk_index,
+        value: avgData.structural_risk_index,
         threshold: 0.7,
-        importance: building.structural_risk_index,
-        status: building.structural_risk_index > 0.8 ? 'critical' : building.structural_risk_index > 0.6 ? 'warning' : 'normal',
+        importance: avgData.structural_risk_index,
+        status: avgData.structural_risk_index > 0.8 ? 'critical' : avgData.structural_risk_index > 0.6 ? 'warning' : 'normal',
       });
     }
 
-    if (building.facade_complexity_index !== null) {
+    if (avgData.facade_complexity_index !== undefined) {
       drivers.push({
         factor: 'Facade Complexity',
-        value: building.facade_complexity_index,
+        value: avgData.facade_complexity_index,
         threshold: 0.6,
-        importance: building.facade_complexity_index,
-        status: building.facade_complexity_index > 0.7 ? 'critical' : building.facade_complexity_index > 0.5 ? 'warning' : 'normal',
+        importance: avgData.facade_complexity_index,
+        status: avgData.facade_complexity_index > 0.7 ? 'critical' : avgData.facade_complexity_index > 0.5 ? 'warning' : 'normal',
       });
     }
 
-    if (building.resource_allocation_efficiency !== null) {
+    if (avgData.resource_allocation_efficiency !== undefined) {
       drivers.push({
         factor: 'Resource Efficiency',
-        value: building.resource_allocation_efficiency,
+        value: avgData.resource_allocation_efficiency,
         threshold: 0.8,
-        importance: 1 - building.resource_allocation_efficiency,
-        status: building.resource_allocation_efficiency < 0.6 ? 'critical' : building.resource_allocation_efficiency < 0.7 ? 'warning' : 'normal',
+        importance: 1 - avgData.resource_allocation_efficiency,
+        status: avgData.resource_allocation_efficiency < 0.6 ? 'critical' : avgData.resource_allocation_efficiency < 0.7 ? 'warning' : 'normal',
       });
     }
 
-    return drivers;
+    return drivers.sort((a, b) => b.importance - a.importance);
   };
 
-  const generateRecommendations = (drivers: any[], riskLevel: string) => {
+  const generateKPIData = (buildingDataArray: any[]) => {
+    if (buildingDataArray.length === 0) {
+      return {
+        schedule: { delayIndex: [], currentDelay: 0 },
+        cost: { overrunPercent: 0, baseline: 10.0, trend: [] },
+        efficiency: { current: 0, target: 85 },
+      };
+    }
+
+    // Calculate trends from building data over time
+    const sortedData = buildingDataArray.sort((a, b) => 
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
+
+    const delayTrend = sortedData.map(d => d.delay_index || 0);
+    const costTrend = sortedData.map(d => d.cost_overrun_percent || 0);
+    const efficiencyTrend = sortedData.map(d => d.resource_allocation_efficiency || 0);
+
+    const currentDelay = sortedData[sortedData.length - 1]?.delay_index || 0;
+    const currentCostOverrun = sortedData[sortedData.length - 1]?.cost_overrun_percent || 0;
+    const currentEfficiency = (sortedData[sortedData.length - 1]?.resource_allocation_efficiency || 0) * 100;
+
+    return {
+      schedule: {
+        delayIndex: delayTrend,
+        currentDelay,
+      },
+      cost: {
+        overrunPercent: currentCostOverrun,
+        baseline: 10.0,
+        trend: costTrend,
+      },
+      efficiency: {
+        current: currentEfficiency,
+        target: 85,
+      },
+    };
+  };
+
+  const generateAIRecommendations = async (
+    riskLevel: string,
+    riskDrivers: any[],
+    project: Project,
+    buildingData: any[]
+  ) => {
+    try {
+      const recommendations = await GeminiService.generateRecommendations(
+        riskLevel,
+        riskDrivers,
+        project,
+        buildingData
+      );
+      
+      return recommendations.map((rec, index) => ({
+        id: `ai-rec-${index}`,
+        title: `AI Recommendation ${index + 1}`,
+        description: rec,
+        priority: riskLevel === 'High' ? 'high' : riskLevel === 'Medium' ? 'medium' : 'low',
+        category: 'schedule',
+        action: rec,
+      }));
+    } catch (error) {
+      console.error('Error generating AI recommendations:', error);
+      return getFallbackRecommendations(riskLevel, riskDrivers);
+    }
+  };
+
+  const getFallbackRecommendations = (riskLevel: string, riskDrivers: any[]) => {
     const recommendations = [];
-    
-    drivers.forEach((driver, index) => {
+
+    if (riskLevel === 'High') {
+      recommendations.push({
+        id: 'fallback-1',
+        title: 'High Risk Level Detected',
+        description: 'Multiple factors contributing to elevated risk assessment',
+        priority: 'high' as const,
+        category: 'schedule' as const,
+        action: 'Implement comprehensive risk mitigation strategy and increase monitoring frequency',
+      });
+    }
+
+    riskDrivers.forEach((driver, index) => {
       if (driver.status === 'critical') {
         let recommendation = {
-          id: `rec-${index}`,
+          id: `fallback-${index + 2}`,
           title: '',
           description: '',
           priority: 'high' as const,
@@ -268,32 +354,11 @@ export default function DashboardScreen() {
               category: 'safety',
             };
             break;
-          case 'Structural Risk Index':
-            recommendation = {
-              ...recommendation,
-              title: 'Structural Risk Concern',
-              description: `High structural risk index (${driver.value.toFixed(2)}) requires attention`,
-              action: 'Schedule structural engineering review and inspection',
-              category: 'quality',
-            };
-            break;
         }
         
         recommendations.push(recommendation);
       }
     });
-
-    // Add general recommendations based on risk level
-    if (riskLevel === 'High' && recommendations.length === 0) {
-      recommendations.push({
-        id: 'general-high',
-        title: 'High Risk Level Detected',
-        description: 'Multiple factors contributing to elevated risk assessment',
-        priority: 'high' as const,
-        category: 'schedule' as const,
-        action: 'Implement comprehensive risk mitigation strategy and increase monitoring frequency',
-      });
-    }
 
     return recommendations;
   };
@@ -384,8 +449,8 @@ export default function DashboardScreen() {
         {/* Risk Drivers */}
         <RiskDriversPanel drivers={dashboardData.riskDrivers} />
 
-        {/* IoT Sensors */}
-        <IoTSensorPanel sensorData={dashboardData.sensorData} />
+        {/* Building Analytics */}
+        <BuildingAnalyticsPanel selectedProjectId={selectedProject.id} />
 
         {/* Project KPIs */}
         <ProjectKPIPanel kpiData={dashboardData.kpiData} />

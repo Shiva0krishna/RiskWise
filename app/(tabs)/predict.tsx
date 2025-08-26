@@ -6,8 +6,8 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Button,
   Alert,
+  Switch,
 } from 'react-native';
 import {
   FileText,
@@ -17,8 +17,12 @@ import {
   TrendingUp,
   CircleCheck as CheckCircle,
 } from 'lucide-react-native';
+import { useAuth } from '@/contexts/AuthContext';
+import { ApiService } from '@/lib/api';
+import { supabase } from '@/lib/supabase';
 import { BuildingDataForm } from '@/components/forms/BuildingDataForm';
 import { ProjectSelector } from '@/components/dashboard/ProjectSelector';
+import { Button } from '@/components/ui/Button';
 
 interface Project {
   id: string;
@@ -44,6 +48,9 @@ export default function PredictScreen() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [predictionResults, setPredictionResults] = useState<PredictionResult[]>([]);
   const [inputText, setInputText] = useState('');
+  const [saveToProject, setSaveToProject] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const { user } = useAuth();
 
   const tabs = [
     { id: 'form', title: 'Form Input', icon: Database },
@@ -80,35 +87,50 @@ export default function PredictScreen() {
     setPredictionResults(results);
   };
 
-  // 📌 Call backend for text prediction
   const handleTextPrediction = async () => {
     if (!inputText.trim()) {
       Alert.alert('Input Required', 'Please enter some text for prediction.');
       return;
     }
+    
+    setLoading(true);
     try {
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_BASE_URL}/predict/text`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'text/plain',
-          },
-          body: inputText,
-        }
-      );
+      const predictions = await ApiService.predictFromText(inputText);
+      
+      // Save to database if user wants to save to project
+      if (saveToProject && user) {
+        const { error } = await supabase.from('predictions').insert({
+          user_id: user.id,
+          prediction_type: 'text',
+          input_data: { interactive_text: inputText },
+          results: predictions,
+          project_id: selectedProject?.id || null,
+        });
 
-      if (!response.ok) throw new Error('Failed to fetch predictions');
-      const data = await response.json();
+        if (error) throw error;
+      } else if (user) {
+        // Save without project association
+        const { error } = await supabase.from('predictions').insert({
+          user_id: user.id,
+          prediction_type: 'text',
+          input_data: { interactive_text: inputText },
+          results: predictions,
+          project_id: null,
+        });
 
-      if (data && data.predictions) {
-        setPredictionResults([data.predictions]);
-      } else {
-        throw new Error('Invalid response format');
+        if (error) throw error;
+      }
+
+      setPredictionResults(predictions);
+      
+      if (!saveToProject) {
+        Alert.alert('Prediction Complete', 'Results generated (not saved to project)');
       }
     } catch (error) {
       console.error(error);
-      Alert.alert('Error', 'Failed to fetch prediction from API');
+      Alert.alert('Error', 'Failed to get prediction from API');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -126,6 +148,23 @@ export default function PredictScreen() {
         onProjectSelect={setSelectedProject}
       />
 
+      {/* Save to Project Toggle */}
+      <View style={styles.saveToggleContainer}>
+        <View style={styles.saveToggleContent}>
+          <Text style={styles.saveToggleLabel}>Save to Project</Text>
+          <Text style={styles.saveToggleDescription}>
+            {saveToProject 
+              ? 'Predictions will be saved to the selected project' 
+              : 'Predictions will be generated for knowledge only'}
+          </Text>
+        </View>
+        <Switch
+          value={saveToProject}
+          onValueChange={setSaveToProject}
+          trackColor={{ false: '#D1D5DB', true: '#93C5FD' }}
+          thumbColor={saveToProject ? '#3B82F6' : '#6B7280'}
+        />
+      </View>
       {/* Tab Navigation */}
       <View style={styles.tabContainer}>
         {tabs.map((tab) => (
@@ -156,19 +195,28 @@ export default function PredictScreen() {
           <BuildingDataForm 
             onPredictionComplete={handlePredictionComplete}
             selectedProject={selectedProject}
+            saveToProject={saveToProject}
           />
         )}
 
         {activeTab === 'text' && (
           <View style={styles.textInputContainer}>
+            <Text style={styles.textInputTitle}>Interactive Text Prediction</Text>
+            <Text style={styles.textInputSubtitle}>
+              Describe your building project in natural language
+            </Text>
             <TextInput
               style={styles.textInput}
-              placeholder="Enter building/project details..."
+              placeholder="Example: 'A 20-story concrete building in London with steel frame structure, currently 75% complete, experiencing some delays and cost overruns...'"
               value={inputText}
               onChangeText={setInputText}
               multiline
             />
-            <Button title="Predict Risk" onPress={handleTextPrediction} />
+            <Button 
+              title="Predict Risk" 
+              onPress={handleTextPrediction}
+              loading={loading}
+            />
           </View>
         )}
 
@@ -281,9 +329,50 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 14, fontWeight: '500', color: '#6B7280' },
   activeTabText: { color: '#3B82F6', fontWeight: '600' },
   content: { flex: 1, paddingHorizontal: 24 },
+  saveToggleContainer: {
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 24,
+    marginBottom: 16,
+    padding: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  saveToggleContent: {
+    flex: 1,
+    marginRight: 16,
+  },
+  saveToggleLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  saveToggleDescription: {
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 20,
+  },
   textInputContainer: { marginBottom: 20 },
+  textInputTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  textInputSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
   textInput: {
-    height: 120,
+    height: 140,
     borderColor: '#D1D5DB',
     borderWidth: 1,
     borderRadius: 8,
@@ -291,6 +380,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     backgroundColor: '#FFFFFF',
     textAlignVertical: 'top',
+    fontSize: 16,
+    lineHeight: 24,
   },
   resultsContainer: {
     marginTop: 20,

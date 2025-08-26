@@ -48,9 +48,10 @@ interface BuildingData {
 interface BuildingDataFormProps {
   onPredictionComplete: (results: any[]) => void;
   selectedProject?: Project | null;
+  saveToProject?: boolean;
 }
 
-export function BuildingDataForm({ onPredictionComplete, selectedProject }: BuildingDataFormProps) {
+export function BuildingDataForm({ onPredictionComplete, selectedProject, saveToProject = true }: BuildingDataFormProps) {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState<Partial<BuildingData>>({
@@ -94,8 +95,8 @@ export function BuildingDataForm({ onPredictionComplete, selectedProject }: Buil
       // Call prediction API
       const predictions = await ApiService.predictFromJson(formData);
 
-      // Save to database
-      if (user) {
+      // Save to database if user wants to save to project
+      if (saveToProject && user) {
         // Save prediction
         const { error: predictionError } = await supabase
           .from('predictions')
@@ -137,6 +138,7 @@ export function BuildingDataForm({ onPredictionComplete, selectedProject }: Buil
             cobie_assets: formData.COBie_Assets || null,
             cobie_systems: formData.COBie_Systems || null,
             project_id: selectedProject?.id || null,
+            risk_level: predictions.length > 0 ? predictions[0].Predicted_Risk : null,
           });
 
         if (buildingError) throw buildingError;
@@ -144,8 +146,10 @@ export function BuildingDataForm({ onPredictionComplete, selectedProject }: Buil
 
       onPredictionComplete(predictions);
 
-      if (Platform.OS !== 'web') {
-        Alert.alert('Success', 'Prediction completed successfully!');
+      if (!saveToProject) {
+        Alert.alert('Prediction Complete', 'Results generated (not saved to project)');
+      } else if (Platform.OS !== 'web') {
+        Alert.alert('Success', 'Prediction completed and saved to project!');
       }
     } catch (error) {
       console.error('Prediction error:', error);
