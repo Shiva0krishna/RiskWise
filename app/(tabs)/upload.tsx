@@ -216,6 +216,29 @@ export default function UploadScreen() {
         />
       </View>
 
+      <ProjectSelector
+        selectedProject={selectedProject}
+        onProjectSelect={setSelectedProject}
+      />
+
+      {/* Save to Project Toggle */}
+      <View style={styles.saveToggleContainer}>
+        <View style={styles.saveToggleContent}>
+          <Text style={styles.saveToggleLabel}>Save to Project</Text>
+          <Text style={styles.saveToggleDescription}>
+            {saveToProject 
+              ? 'Results will be saved to the selected project' 
+              : 'Results will be generated for analysis only'}
+          </Text>
+        </View>
+        <Switch
+          value={saveToProject}
+          onValueChange={setSaveToProject}
+          trackColor={{ false: '#D1D5DB', true: '#93C5FD' }}
+          thumbColor={saveToProject ? '#3B82F6' : '#6B7280'}
+        />
+      </View>
+
       {/* Results Section */}
       {uploadResults.length > 0 && (
         <View style={styles.section}>

@@ -138,6 +138,7 @@ export function BuildingDataForm({ onPredictionComplete, selectedProject, saveTo
             cobie_assets: formData.COBie_Assets || null,
             cobie_systems: formData.COBie_Systems || null,
             project_id: selectedProject?.id || null,
+            risk_level: predictions.length > 0 ? predictions[0].Predicted_Risk : null,
           });
 
         if (buildingError) throw buildingError;
