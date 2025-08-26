@@ -20,8 +20,6 @@ import { Button } from '@/components/ui/Button';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import { Switch } from 'react-native';
-
 interface UploadResult {
   fileName: string;
   results: any[];
