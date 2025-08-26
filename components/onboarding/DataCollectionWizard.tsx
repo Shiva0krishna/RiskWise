@@ -9,7 +9,7 @@ import {
   Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ChevronRight, Building, MapPin, Settings, CheckCircle } from 'lucide-react-native';
+import { ChevronRight, Building, MapPin, Settings, CircleCheck as CheckCircle } from 'lucide-react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
