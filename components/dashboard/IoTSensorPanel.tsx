@@ -415,4 +415,4 @@ const styles = StyleSheet.create({
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981', marginRight: 4 },
   liveText: { fontSize: 10, fontWeight: '600', color: '#10B981' },
   loadingContainer: { alignItems: 'center', paddingVertical: 40 },
-  loadingText: { fontSize: 16, color: '#6B7280', marginTop: 8 },
+  loadingText: { fontSize: 16, color: '#6B7280', marginTop: 8 }
