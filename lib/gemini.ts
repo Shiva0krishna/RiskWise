@@ -17,7 +17,7 @@ interface GeminiResponse {
 }
 
 export class GeminiService {
-  private static apiKey = 'AIzaSyBOKSuuuMJhJJJJJJJJJJJJJJJJJJJJJJJ'; // Replace with your actual API key
+  private static apiKey = 'AIzaSyBOKSuuuMJhJJJJJJJJJJJJJJJJJJJJJJJ'; // Replace with your actual Gemini API key
   private static baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent';
 
   static async generateRecommendations(
